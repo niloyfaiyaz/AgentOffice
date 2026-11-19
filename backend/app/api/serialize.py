@@ -58,7 +58,8 @@ def agent(db: Session, a: ProjectAgent, spend: bool = True) -> dict:
            "effort": a.effort, "max_output_tokens": a.max_output_tokens, "max_calls_per_task": a.max_calls_per_task,
            "spend_limit_usd": money(a.spend_limit_usd), "is_orchestrator": a.is_orchestrator, "desk_index": a.desk_index,
            "status": a.status, "current_task_id": s(a.current_task_id), "tools": sorted(services.agent_permissions(db, a)),
-           "cost_tier": cost_tier(mc.input_price_per_mtok, mc.output_price_per_mtok) if mc else "unpriced"}
+           "cost_tier": "test" if a.provider == "scripted-test" else
+           (cost_tier(mc.input_price_per_mtok, mc.output_price_per_mtok) if mc else "unpriced")}
     if spend:
         out["estimated_spend_usd"] = float(services.agent_spend(db, a.id))
     return out

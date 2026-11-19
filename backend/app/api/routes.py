@@ -667,7 +667,8 @@ async def recommend_team_ai(pid: str, db: Session = Depends(get_db)):
 def _hire(db: Session, p: Project, d: Optional[AgentDefinition], body: AgentIn) -> ProjectAgent:
     data = body.model_dump(exclude_unset=True)
     _validate_agent_fields(db, data)
-    idx = (db.scalar(select(func.max(ProjectAgent.desk_index)).where(ProjectAgent.project_id == p.id)) or -1) + 1
+    top = db.scalar(select(func.max(ProjectAgent.desk_index)).where(ProjectAgent.project_id == p.id))
+    idx = 0 if top is None else top + 1
     a = ProjectAgent(project_id=p.id, agent_definition_id=d.id if d else None,
                      display_name=body.name or (d.name if d else "New hire"), role=body.role or (d.role if d else "Specialist"),
                      role_key=body.role_key or (d.role_key if d else _slugify(body.role or "specialist")),

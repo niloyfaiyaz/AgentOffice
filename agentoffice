@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# AgentOffice launcher: ./agentoffice start | stop | status | logs | test
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+RUN="$ROOT/data/run"
+VENV="$ROOT/.venv"
+PORT="${AGENTOFFICE_PORT:-8765}"
+mkdir -p "$RUN"
+
+say() { printf '\033[1;34m[agentoffice]\033[0m %s\n' "$*"; }
+die() { printf '\033[1;31m[agentoffice]\033[0m %s\n' "$*" >&2; exit 1; }
+
+need_docker() {
+  command -v docker >/dev/null || die "Docker is required (Docker Desktop on macOS/Windows). Install it and retry."
+  if ! docker info >/dev/null 2>&1; then
+    if [[ "$(uname)" == "Darwin" ]]; then say "Starting Docker Desktop…"; open -a Docker || true; fi
+    for _ in $(seq 1 60); do docker info >/dev/null 2>&1 && return; sleep 2; done
+    die "The Docker daemon is not running."
+  fi
+}
+
+setup() {
+  need_docker
+  say "Starting PostgreSQL (127.0.0.1:55432)…"
+  docker compose -f "$ROOT/docker-compose.yml" up -d postgres >/dev/null
+  for _ in $(seq 1 60); do docker exec agentoffice-postgres pg_isready -U agentoffice >/dev/null 2>&1 && break; sleep 1; done
+  if ! docker image inspect agentoffice-sandbox:1 >/dev/null 2>&1; then
+    say "Building the code sandbox image (one time)…"
+    docker compose -f "$ROOT/docker-compose.yml" --profile build-only build sandbox-image >"$RUN/sandbox-build.log" 2>&1 \
+      || say "Sandbox build failed (see data/run/sandbox-build.log); code execution will be disabled."
+  fi
+  if [[ ! -x "$VENV/bin/python" ]]; then
+    PY="$(command -v python3.13 || command -v python3.12 || command -v python3.11 || command -v python3)"
+    "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 11))' || die "Python 3.11+ is required."
+    say "Creating Python environment…"
+    "$PY" -m venv "$VENV"
+  fi
+  if [[ ! -f "$VENV/.deps-ok" || "$ROOT/backend/requirements.txt" -nt "$VENV/.deps-ok" ]]; then
+    say "Installing backend dependencies…"
+    "$VENV/bin/pip" install -q --upgrade pip && "$VENV/bin/pip" install -q -r "$ROOT/backend/requirements.txt"
+    touch "$VENV/.deps-ok"
+  fi
+  say "Applying database migrations…"
+  (cd "$ROOT/backend" && "$VENV/bin/alembic" upgrade head >/dev/null)
+  if [[ ! -f "$ROOT/frontend/dist/index.html" || -n "$(find "$ROOT/frontend/src" -newer "$ROOT/frontend/dist/index.html" -print -quit)" ]]; then
+    command -v npm >/dev/null || die "Node.js 18+ is required to build the interface."
+    say "Building the interface…"
+    (cd "$ROOT/frontend" && { [[ -d node_modules ]] || npm ci --no-fund --no-audit --ignore-scripts; } && npx vite build >/dev/null)
+  fi
+}
+
+running() { [[ -f "$RUN/$1.pid" ]] && kill -0 "$(cat "$RUN/$1.pid")" 2>/dev/null; }
+
+start() {
+  setup
+  cd "$ROOT/backend"
+  if ! running server; then
+    say "Starting the app server on http://127.0.0.1:$PORT …"
+    nohup "$VENV/bin/uvicorn" app.main:app --host 127.0.0.1 --port "$PORT" >"$RUN/server.log" 2>&1 &
+    echo $! >"$RUN/server.pid"
+  fi
+  if ! running worker; then
+    say "Starting the execution worker…"
+    nohup "$VENV/bin/python" -m app.worker >"$RUN/worker.log" 2>&1 &
+    echo $! >"$RUN/worker.pid"
+  fi
+  for _ in $(seq 1 30); do curl -sf "http://127.0.0.1:$PORT/api/health" >/dev/null && break; sleep 1; done
+  curl -sf "http://127.0.0.1:$PORT/api/health" >/dev/null || die "Server did not start; see data/run/server.log"
+  say "AgentOffice is running: http://127.0.0.1:$PORT"
+  [[ "${AGENTOFFICE_NO_BROWSER:-}" == "1" ]] || { command -v open >/dev/null && open "http://127.0.0.1:$PORT" || true; }
+}
+
+stop() {
+  for p in worker server; do
+    if running "$p"; then say "Stopping $p…"; kill "$(cat "$RUN/$p.pid")" || true; fi
+    rm -f "$RUN/$p.pid"
+  done
+  [[ "${1:-}" == "--all" ]] && docker compose -f "$ROOT/docker-compose.yml" stop postgres >/dev/null && say "PostgreSQL stopped."
+  return 0
+}
+
+case "${1:-start}" in
+  start) start ;;
+  stop) stop "${2:-}" ;;
+  restart) stop; start ;;
+  status) for p in server worker; do running "$p" && say "$p: running (pid $(cat "$RUN/$p.pid"))" || say "$p: stopped"; done ;;
+  logs) tail -n "${2:-50}" "$RUN/server.log" "$RUN/worker.log" ;;
+  test)
+    setup
+    (cd "$ROOT/backend" && "$VENV/bin/python" -m pytest tests/ -q </dev/null)
+    (cd "$ROOT/frontend" && npx vitest run) ;;
+  *) echo "usage: ./agentoffice start|stop [--all]|restart|status|logs [n]|test"; exit 2 ;;
+esac

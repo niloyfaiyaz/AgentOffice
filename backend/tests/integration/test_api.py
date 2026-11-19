@@ -27,6 +27,7 @@ def test_project_crud_archive_delete(client):
 def test_team_editing_and_permissions(client):
     p = make_project(client, roles=("project_manager", "developer"))
     agents = client.get(f"/api/projects/{p['id']}/agents").json()
+    assert sorted(a["desk_index"] for a in agents) == [0, 1]  # each hire gets its own desk
     pm = next(a for a in agents if a["role_key"] == "project_manager")
     assert pm["is_orchestrator"]
     dev = next(a for a in agents if a["role_key"] == "developer")

@@ -521,3 +521,38 @@ async def test_artifact_ownership_guard_and_agent_memory(client, fake):
     assert "Teammates' tasks" in brief_b and "Bea: Task A" in brief_b
     brief_c = next(s for s in seen if "# Your task: Task C" in s)
     assert "Your earlier work on this project" in brief_c and "finished Task A" in brief_c
+
+
+async def test_model_change_applies_at_safe_checkpoint(client, fake):
+    """Changing an agent's model mid-task takes effect when the suspended task resumes,
+    continuing the same persisted conversation (no orphaned tool calls)."""
+    state = {"paused": False}
+
+    def w(ctx):
+        if ctx["title"] == "Task A" and not state["paused"]:
+            with SessionLocal() as db:
+                from app.orchestration import decisions
+                decisions.request_control(db, db.query(ProjectRun).one(), "pause")
+                db.commit()
+            state["paused"] = True
+        return simple_worker(ctx)
+
+    fake(planner_then([T("A", "Bea")], w))
+    proj = make_project(client, roles=("project_manager", "business_analyst"))
+    run = await start_and_approve(client, proj["id"])
+    await drive(run["id"])
+    assert run_status(run["id"]) == "paused"
+    bea = next(a for a in client.get(f"/api/projects/{proj['id']}/agents").json() if a["display_name"] == "Bea")
+    client.patch(f"/api/projects/{proj['id']}/agents/{bea['id']}", json={"model_id": "scripted-v2"})
+    client.post(f"/api/runs/{run['id']}/resume")
+    await drive(run["id"])
+    assert run_status(run["id"]) == "completed"
+    with SessionLocal() as db:
+        a = db.query(Task).filter(Task.title == "Task A").one()
+        [ex] = db.query(TaskExecution).filter(TaskExecution.task_id == a.id).all()
+        assert ex.model_id == "scripted-v2" and ex.status == "succeeded"
+        calls = [b for m in ex.conversation if m["role"] == "assistant" for b in m["content"] if b["type"] == "tool_call"]
+        results = {b["tool_call_id"] for m in ex.conversation if m["role"] == "user" for b in m["content"] if b["type"] == "tool_result"}
+        assert all(c["id"] in results for c in calls)  # every tool call paired with a result
+    types = [e["type"] for e in client.get(f"/api/projects/{proj['id']}/events").json()]
+    assert "model_changed" in types and "model_switched" in types
