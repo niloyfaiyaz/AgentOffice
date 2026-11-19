@@ -1,0 +1,29 @@
+# AgentOffice local services. Everything binds to loopback only.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agentoffice-postgres
+    environment:
+      POSTGRES_USER: agentoffice
+      POSTGRES_PASSWORD: ${AGENTOFFICE_DB_PASSWORD:-agentoffice-local}
+      POSTGRES_DB: agentoffice
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - agentoffice-pgdata:/var/lib/postgresql/data
+      - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/10-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentoffice"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  # Image used by the code-execution sandbox. Built, never run as a service.
+  sandbox-image:
+    build: ./sandbox
+    image: agentoffice-sandbox:1
+    profiles: ["build-only"]
+
+volumes:
+  agentoffice-pgdata:

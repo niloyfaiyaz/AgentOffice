@@ -1,0 +1,20 @@
+fastapi==0.165.0
+uvicorn[standard]==0.54.0
+pydantic==2.14.3
+sqlalchemy==2.1.9
+alembic==1.20.1
+psycopg[binary]==3.3.9
+psycopg-pool==3.3.3
+langgraph==1.2.22
+langgraph-checkpoint-postgres==3.2.1
+anthropic==2.10.0
+openai==3.55.1
+cryptography==50.0.2
+keyring==25.7.0
+pypdf==7.1.1
+python-docx==1.2.0
+python-multipart==0.0.34
+# test
+pytest==9.2.0
+pytest-asyncio==1.5.0
+httpx==0.28.1
