@@ -13,7 +13,7 @@ die() { printf '\033[1;31m[agentoffice]\033[0m %s\n' "$*" >&2; exit 1; }
 need_docker() {
   command -v docker >/dev/null || die "Docker is required (Docker Desktop on macOS/Windows). Install it and retry."
   if ! docker info >/dev/null 2>&1; then
-    if [[ "$(uname)" == "Darwin" ]]; then say "Starting Docker Desktop…"; open -a Docker || true; fi
+    if [[ "$(uname)" == "Darwin" ]]; then say "Starting Docker Desktop..."; open -a Docker || true; fi
     for _ in $(seq 1 60); do docker info >/dev/null 2>&1 && return; sleep 2; done
     die "The Docker daemon is not running."
   fi
@@ -21,30 +21,30 @@ need_docker() {
 
 setup() {
   need_docker
-  say "Starting PostgreSQL (127.0.0.1:55432)…"
+  say "Starting PostgreSQL (127.0.0.1:55432)..."
   docker compose -f "$ROOT/docker-compose.yml" up -d postgres >/dev/null
   for _ in $(seq 1 60); do docker exec agentoffice-postgres pg_isready -U agentoffice >/dev/null 2>&1 && break; sleep 1; done
   if ! docker image inspect agentoffice-sandbox:1 >/dev/null 2>&1; then
-    say "Building the code sandbox image (one time)…"
+    say "Building the code sandbox image (one time)..."
     docker compose -f "$ROOT/docker-compose.yml" --profile build-only build sandbox-image >"$RUN/sandbox-build.log" 2>&1 \
       || say "Sandbox build failed (see data/run/sandbox-build.log); code execution will be disabled."
   fi
   if [[ ! -x "$VENV/bin/python" ]]; then
     PY="$(command -v python3.13 || command -v python3.12 || command -v python3.11 || command -v python3)"
     "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 11))' || die "Python 3.11+ is required."
-    say "Creating Python environment…"
+    say "Creating Python environment..."
     "$PY" -m venv "$VENV"
   fi
   if [[ ! -f "$VENV/.deps-ok" || "$ROOT/backend/requirements.txt" -nt "$VENV/.deps-ok" ]]; then
-    say "Installing backend dependencies…"
+    say "Installing backend dependencies..."
     "$VENV/bin/pip" install -q --upgrade pip && "$VENV/bin/pip" install -q -r "$ROOT/backend/requirements.txt"
     touch "$VENV/.deps-ok"
   fi
-  say "Applying database migrations…"
+  say "Applying database migrations..."
   (cd "$ROOT/backend" && "$VENV/bin/alembic" upgrade head >/dev/null)
   if [[ ! -f "$ROOT/frontend/dist/index.html" || -n "$(find "$ROOT/frontend/src" -newer "$ROOT/frontend/dist/index.html" -print -quit)" ]]; then
     command -v npm >/dev/null || die "Node.js 18+ is required to build the interface."
-    say "Building the interface…"
+    say "Building the interface..."
     (cd "$ROOT/frontend" && { [[ -d node_modules ]] || npm ci --no-fund --no-audit --ignore-scripts; } && npx vite build >/dev/null)
   fi
 }
@@ -55,12 +55,12 @@ start() {
   setup
   cd "$ROOT/backend"
   if ! running server; then
-    say "Starting the app server on http://127.0.0.1:$PORT …"
+    say "Starting the app server on http://127.0.0.1:$PORT ..."
     nohup "$VENV/bin/uvicorn" app.main:app --host 127.0.0.1 --port "$PORT" >"$RUN/server.log" 2>&1 &
     echo $! >"$RUN/server.pid"
   fi
   if ! running worker; then
-    say "Starting the execution worker…"
+    say "Starting the execution worker..."
     nohup "$VENV/bin/python" -m app.worker >"$RUN/worker.log" 2>&1 &
     echo $! >"$RUN/worker.pid"
   fi
@@ -72,7 +72,7 @@ start() {
 
 stop() {
   for p in worker server; do
-    if running "$p"; then say "Stopping $p…"; kill "$(cat "$RUN/$p.pid")" || true; fi
+    if running "$p"; then say "Stopping ${p}..."; kill "$(cat "$RUN/$p.pid")" || true; fi
     rm -f "$RUN/$p.pid"
   done
   [[ "${1:-}" == "--all" ]] && docker compose -f "$ROOT/docker-compose.yml" stop postgres >/dev/null && say "PostgreSQL stopped."
