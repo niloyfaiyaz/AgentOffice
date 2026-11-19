@@ -13,8 +13,9 @@ Date: 2026-11-18 · Branch: `build/agentoffice` · Rollback tag before open-sour
   recommendation by template, keyword heuristic (labelled as such) or by asking the hired PM.
 - **Models and BYOK**: Anthropic and OpenAI adapters on the official SDKs; keys in the OS keychain
   (encrypted-file fallback); connection test with model discovery; independent model per agent;
-  model replacement at safe checkpoints; seeded Anthropic prices (source and date labelled); OpenAI
-  prices left for the user to enter, since they could not be verified.
+  model replacement at safe checkpoints; seeded Anthropic and OpenAI prices with source and check date
+  labelled (OpenAI's taken from developers.openai.com/api/docs/pricing on 2026-11-19); other discovered
+  models stay unpriced until the user enters prices.
 - **Orchestration**: PM statement of work (validated) with client approve/edit/revise/reject;
   dependency-aware parallel execution with a concurrency limit; structured delegation with handoffs;
   client questions; tool authorization; budget and call limits; pause/resume/cancel; bounded
@@ -53,8 +54,8 @@ the key's organization.
 
 | Suite | Result | Provider |
 |---|---|---|
-| Backend unit + contract + integration (`pytest`, real PostgreSQL 16, real Docker sandbox) | **56 passed, 1 skipped** | scripted / fake, mock HTTP for adapters |
-| Real-provider journey (`tests/real`) | **skipped**: no API key configured | real (not run) |
+| Backend unit + contract + integration (`pytest`, real PostgreSQL 16, real Docker sandbox) | **57 passed** | scripted / fake, mock HTTP for adapters |
+| Real-provider journey (`tests/real`), 2026-11-19 | **1 passed** (106 s) | **real: OpenAI gpt-5.4** |
 | Frontend unit (`vitest`) | **12 passed** | n/a |
 | End-to-end UI (`playwright`, isolated server + test DB) | **2 passed** | scripted (not AI) |
 | Migration up/down round-trip | passed (part of the backend suite) | n/a |
@@ -71,9 +72,27 @@ Commands: `./agentoffice test`, and for e2e `cd frontend && npx playwright test`
   Bugs found this way and fixed: duplicate desk assignment, office canvas overflow and readability,
   horizontal overflow at narrow widths, avatars announced redundantly to screen readers, test-provider
   tier label.
-- **Real-provider journey: NOT executed.** No API key is configured on this machine, and real
-  credentials were not available to the build. The test is implemented and will run with
-  `./agentoffice start` → Settings → add an Anthropic key → `cd backend && ../.venv/bin/python -m pytest tests/real -m real_provider -s`.
+- **Real-provider journey: PASSED with OpenAI gpt-5.4** (key added by the user in Settings, stored in the
+  macOS Keychain). Each step and its result:
+
+  | Step | Result |
+  |---|---|
+  | Create SaaS onboarding project ($3 budget) | pass |
+  | Hire PM, BA, Technical Architect, QA; assign gpt-5.4 | pass |
+  | Provider connection | pass: 50 models visible |
+  | PM statement of work | pass: 2 tasks, QA requested, **2 real clarification questions** (success metric; stack constraints) |
+  | Approve SOW, answer the questions | pass: answers recorded as requirements |
+  | Execution | pass: backlog (BA) and technical considerations (Architect) ran in parallel |
+  | QA review of actual artifacts | pass: 8 findings, all `info` severity, so correctly no rework |
+  | PM consolidation | pass: final delivery summary |
+  | Export | pass: 11,173-byte ZIP with manifest |
+  | Usage records | pass: 11 real calls, 30,409 input / 5,805 output tokens, **est. $0.1681** |
+
+  Not exercised by the real run: a *mid-run* agent question (the agents did not need one; the path is
+  covered by scripted tests), QA-triggered rework against a real model, and delegation by a real model.
+  Two defects were found and fixed during this run: provider clients reused across event loops
+  (now cached per loop), and informational QA notes counted as "unresolved findings" at acceptance
+  (now reported separately).
 
 ## 6. Security verification
 
@@ -102,10 +121,10 @@ Commands: `./agentoffice test`, and for e2e `cd frontend && npx playwright test`
 
 ## 8. Unverified functionality (needs a real provider)
 
-Everything that depends on a live model is verified only with scripted/fake providers and mock-HTTP
-contract tests:
-- real Anthropic/OpenAI calls, model discovery against a real key, real usage numbers and costs;
-- plan quality, QA quality and delegation decisions made by real models;
+OpenAI (gpt-5.4) is verified end to end with real calls (§5). Still verified only with scripted/fake
+providers and mock-HTTP contract tests:
+- **all live Anthropic calls** (no Anthropic key was provided);
+- QA-triggered rework, mid-run clarification and delegation decided by real models;
 - the server-side refusal-fallback beta and effort parameter against the live API (graceful
   degradation on rejection is tested with mocks);
 - Anthropic web search; "ask the PM to propose a team"; PM chat answers.

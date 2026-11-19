@@ -194,6 +194,7 @@ export function ApprovalCard({ a, agents, compact }: { a: Approval; agents: Agen
             <Badge tone="ok">Agent work completed</Badge>
             <Badge tone={a.payload.qa_performed ? "info" : "muted"}>{a.payload.qa_performed ? "QA review performed" : "No QA review"}</Badge>
             {!!a.payload.unresolved_findings?.length && <Badge tone="warn">{a.payload.unresolved_findings.length} unresolved finding(s)</Badge>}
+            {!!a.payload.qa_notes?.length && <Badge title="Informational reviewer observations, not defects">{a.payload.qa_notes.length} QA note(s)</Badge>}
             <Badge>Awaiting your acceptance</Badge>
           </div>
           <Link className="text-sm text-accent underline" to={`/deliverables/${a.project_id}`}>Review deliverables</Link>

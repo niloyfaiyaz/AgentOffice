@@ -309,7 +309,9 @@ def finalize(run_id: uuid.UUID) -> None:
         project = db.get(Project, run.project_id)
         tasks = services.run_tasks(db, run.id)
         findings = list(db.scalars(select(ReviewFinding).where(ReviewFinding.run_id == run.id)))
-        unresolved = [f for f in findings if f.status in ("open", "unresolved", "rework_requested")]
+        # "info" findings are reviewer observations, not defects; they are reported separately.
+        unresolved = [f for f in findings if f.status in ("open", "unresolved", "rework_requested") and f.severity != "info"]
+        notes = [f for f in findings if f.severity == "info"]
         qa_done = any(t.kind == "qa" and t.status == "completed" for t in tasks)
         summary = next((t for t in tasks if t.kind == "consolidation"), None)
         arts = [a for a in services.project_artifacts(db, project.id, include_working=False) if a.category != "plan"]
@@ -325,6 +327,7 @@ def finalize(run_id: uuid.UUID) -> None:
                          + "QA approval is a review opinion, not proof of correctness. Accept the work, or request a revision."),
             payload={"agent_work_completed": True, "qa_performed": qa_done,
                      "unresolved_findings": [f.finding_key for f in unresolved],
+                     "qa_notes": [f.finding_key for f in notes],
                      "summary_task_id": str(summary.id) if summary else None},
             artifact_ids=[a.id for a in arts])
         events.emit(db, project.id, "run_completed",

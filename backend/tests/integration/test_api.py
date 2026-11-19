@@ -95,7 +95,9 @@ def test_security_middleware():
 
 def test_model_pricing_edit(client):
     ms = client.get("/api/models").json()
-    gpt = next(m for m in ms if m["model_id"] == "gpt-5")
+    seeded = next(m for m in ms if m["model_id"] == "gpt-5.4")
+    assert seeded["input_price_per_mtok"] == 2.5 and "developers.openai.com" in seeded["pricing_source"]
+    gpt = client.post("/api/models", json={"provider": "openai", "model_id": "gpt-custom-test"}).json()
     assert gpt["input_price_per_mtok"] is None and gpt["cost_tier"] == "unpriced"
     r = client.patch(f"/api/models/{gpt['id']}", json={"input_price_per_mtok": 1.25, "output_price_per_mtok": 10})
     assert r.json()["pricing_source"] == "user-configured" and r.json()["cost_tier"] == "$$"

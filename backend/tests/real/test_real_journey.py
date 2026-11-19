@@ -1,7 +1,8 @@
 """REAL-PROVIDER end-to-end journey (spec §16 mandatory test).
 
 Runs only when a real API key is available: from the OS keychain entry AgentOffice stores
-(Settings -> Anthropic), or AGENTOFFICE_REAL_ANTHROPIC_KEY. Otherwise it is SKIPPED, and
+(Settings -> Anthropic or OpenAI), or AGENTOFFICE_REAL_<PROVIDER>_KEY. Anthropic is preferred
+when both exist; force one with AGENTOFFICE_REAL_PROVIDER, and a model with AGENTOFFICE_REAL_MODEL. Otherwise it is SKIPPED, and
 never reported as passed. Makes real, billed API calls; spending is capped by the project
 budget (AGENTOFFICE_REAL_BUDGET_USD, default $3). Results are written to
 data/real-journey-result.json.
@@ -22,26 +23,37 @@ from app.providers import registry
 from app.security import credentials
 from tests.helpers import drive, pending, run_status
 
-MODEL = os.environ.get("AGENTOFFICE_REAL_MODEL", "claude-opus-5-5")
+DEFAULT_MODEL = {"anthropic": "claude-opus-5-5", "openai": "gpt-5.4"}
 BUDGET = float(os.environ.get("AGENTOFFICE_REAL_BUDGET_USD", "3"))
 RESULT = Path(__file__).resolve().parents[3] / "data" / "real-journey-result.json"
 
 
-def _real_key() -> str | None:
-    if os.environ.get("AGENTOFFICE_REAL_ANTHROPIC_KEY"):
-        return os.environ["AGENTOFFICE_REAL_ANTHROPIC_KEY"]
+def _real_key(provider: str) -> str | None:
+    env = os.environ.get(f"AGENTOFFICE_REAL_{provider.upper()}_KEY")
+    if env:
+        return env
     try:
-        return credentials.KeyringStore().get("anthropic") if credentials.KeyringStore.available() else None
+        return credentials.KeyringStore().get(provider) if credentials.KeyringStore.available() else None
     except Exception:
         return None
 
 
+def _pick_provider() -> tuple[str | None, str | None]:
+    wanted = os.environ.get("AGENTOFFICE_REAL_PROVIDER")
+    for p in ([wanted] if wanted else ["anthropic", "openai"]):
+        key = _real_key(p)
+        if key:
+            return p, key
+    return None, None
+
+
 @pytest.mark.real_provider
 async def test_real_saas_onboarding_journey(client):
-    key = _real_key()
+    provider, key = _pick_provider()
     if not key:
-        pytest.skip("No real Anthropic API key configured - real-provider journey NOT executed")
-    credentials.get_store().set("anthropic", key)
+        pytest.skip("No real provider API key configured - real-provider journey NOT executed")
+    MODEL = os.environ.get("AGENTOFFICE_REAL_MODEL", DEFAULT_MODEL[provider])
+    credentials.get_store().set(provider, key)
     registry.invalidate()
     steps: list[dict] = []
 
@@ -61,11 +73,16 @@ async def test_real_saas_onboarding_journey(client):
     # 2. Hire PM, BA, Technical Architect, QA Reviewer; 3. assign models
     defs = {d["role_key"]: d for d in client.get("/api/agent-definitions").json()}
     for r in ("project_manager", "business_analyst", "software_architect", "qa_reviewer"):
-        res = client.post(f"/api/projects/{pid}/agents", json={"agent_definition_id": defs[r]["id"], "provider": "anthropic",
+        res = client.post(f"/api/projects/{pid}/agents", json={"agent_definition_id": defs[r]["id"], "provider": provider,
                                                                "model_id": MODEL, "effort": "low", "max_output_tokens": 8000})
         assert res.status_code == 200, res.text
     log("hire team + assign models", True, MODEL)
-    test = client.post("/api/providers/anthropic/test")
+    from app.models import ProviderCredentialReference
+    from app.db import SessionLocal as _S
+    with _S() as db:  # register the credential reference as the Settings page would
+        db.add(ProviderCredentialReference(provider=provider, storage_backend="memory", key_hint=credentials.key_hint(key)))
+        db.commit()
+    test = client.post(f"/api/providers/{provider}/test")
     assert test.status_code == 200 and test.json()["ok"], test.text
     log("provider connection", True, f"{len(test.json()['models'])} models visible")
 
@@ -113,7 +130,7 @@ async def test_real_saas_onboarding_journey(client):
     log("usage recorded", bool(real), f"{len(real)} real calls, est ${total:.4f}, "
                                       f"{sum(x.input_tokens for x in real)} in / {sum(x.output_tokens for x in real)} out tokens")
     RESULT.parent.mkdir(parents=True, exist_ok=True)
-    RESULT.write_text(json.dumps({"model": MODEL, "project_id": pid, "steps": steps,
+    RESULT.write_text(json.dumps({"provider": provider, "model": MODEL, "project_id": pid, "steps": steps,
                                   "tasks": [{"title": t["title"], "kind": t["kind"], "status": t["status"]} for t in state["tasks"]]},
                                  indent=2))
     assert final == "completed", steps

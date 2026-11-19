@@ -163,9 +163,18 @@ ANTHROPIC_MODELS = [
     ("claude-sonnet-5", "Claude Sonnet 5", "2.00", "10.00", None, 1_000_000, 128_000),
     ("claude-haiku-4-5", "Claude Haiku 4.5", "1.00", "5.00", None, 200_000, 64_000),
 ]
-# OpenAI models are discovered from the user's key. Prices are not pre-filled because we
-# cannot verify current prices; the user enters them on the Costs page.
-OPENAI_MODELS = [("gpt-5", "GPT-5"), ("gpt-5-mini", "GPT-5 mini"), ("gpt-4.1", "GPT-4.1")]
+OPENAI_PRICING_SOURCE = ("OpenAI published standard price (developers.openai.com/api/docs/pricing, checked 2026-11-19). "
+                         "Verify before relying on it.")
+# (model_id, display, input, cached input, output) - verified on the date above. Other OpenAI
+# models are discovered from the user's key and left unpriced until the user enters prices.
+OPENAI_MODELS = [
+    ("gpt-5.5", "GPT-5.5", "5.00", "0.50", "30.00"),
+    ("gpt-5.4", "GPT-5.4", "2.50", "0.25", "15.00"),
+    ("gpt-5.4-mini", "GPT-5.4 mini", "0.75", "0.075", "4.50"),
+    ("gpt-5.4-nano", "GPT-5.4 nano", "0.20", "0.02", "1.25"),
+    ("gpt-5", "GPT-5", "1.25", "0.125", "10.00"),
+    ("gpt-5-mini", "GPT-5 mini", "0.25", "0.025", "2.00"),
+]
 
 # Heuristic labels (NOT benchmarks): relative price tier derived only from configured prices.
 def cost_tier(input_price: Decimal | None, output_price: Decimal | None) -> str:
@@ -196,11 +205,16 @@ def seed(db: Session) -> None:
                 cache_read_price_per_mtok=Decimal(cr) if cr else None,
                 pricing_source=ANTHROPIC_PRICING_SOURCE, context_window=ctx, max_output_tokens=mx,
             ))
-    for (mid, disp) in OPENAI_MODELS:
-        if db.scalar(select(ModelConfiguration).where(ModelConfiguration.provider == "openai",
-                                                      ModelConfiguration.model_id == mid)) is None:
-            db.add(ModelConfiguration(provider="openai", model_id=mid, display_name=disp,
-                                      pricing_source="not configured - enter current prices on the Costs page"))
+    for (mid, disp, i, cr, o) in OPENAI_MODELS:
+        mc = db.scalar(select(ModelConfiguration).where(ModelConfiguration.provider == "openai",
+                                                        ModelConfiguration.model_id == mid))
+        if mc is None:
+            mc = ModelConfiguration(provider="openai", model_id=mid, display_name=disp)
+            db.add(mc)
+        if mc.input_price_per_mtok is None:  # never overwrite prices the user entered
+            mc.display_name = disp
+            mc.input_price_per_mtok, mc.cache_read_price_per_mtok = Decimal(i), Decimal(cr)
+            mc.output_price_per_mtok, mc.pricing_source = Decimal(o), OPENAI_PRICING_SOURCE
     for r in DEFAULT_ROLES:
         if db.scalar(select(AgentDefinition).where(AgentDefinition.is_builtin.is_(True),
                                                    AgentDefinition.role_key == r["role_key"])) is None:
