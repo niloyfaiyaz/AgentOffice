@@ -174,7 +174,8 @@ def review_gate(run_id: uuid.UUID) -> str:
         if consolidation is not None:
             return "finalize"
 
-        if qa is not None and not qa_tasks:
+        wants_qa = bool((run.sow or {}).get("qa_review", True))
+        if qa is not None and wants_qa and not qa_tasks:
             t = _new_task(db, run, qa, "qa", "QA review of deliverables",
                           "Review every deliverable against the approved acceptance criteria and requirements.",
                           ["Every acceptance criterion is checked", "Findings cite evidence and a recommended correction"],
@@ -239,6 +240,14 @@ def review_gate(run_id: uuid.UUID) -> str:
                             f"Review cycle limit reached; {len(blocking)} finding(s) remain unresolved and are reported to the client",
                             run_id=run.id)
 
+        delivered = [t for t in services.run_tasks(db, run.id) if t.status == "completed"
+                     and t.kind in ("work", "subtask", "rework")]
+        if not qa_tasks and len(delivered) <= 1:
+            # Nothing to consolidate: skip a model call and write the summary from records.
+            _deterministic_summary(db, project, run, delivered)
+            db.commit()
+            return "finalize"
+
         if pm is not None:
             all_done = [t for t in services.run_tasks(db, run.id) if t.status == "completed"]
             t = _new_task(db, run, pm, "consolidation", "Consolidate final delivery",
@@ -254,6 +263,25 @@ def review_gate(run_id: uuid.UUID) -> str:
             return "more_work"
         db.commit()
         return "finalize"
+
+
+def _deterministic_summary(db: Session, project: Project, run: ProjectRun, delivered: list[Task]) -> None:
+    lines = [f"# Final Delivery Summary — run {run.run_number}", "",
+             "_Compiled automatically from the task records (no model call); a single task needed no consolidation._", ""]
+    for t in delivered:
+        who = db.get(ProjectAgent, t.assigned_agent_id) if t.assigned_agent_id else None
+        lines += [f"## {t.title} — {who.display_name if who else 'teammate'}", t.result_summary or "(no summary)", ""]
+        for aid in t.output_artifact_ids:
+            a = db.get(Artifact, uuid.UUID(aid))
+            if a:
+                lines.append(f"- Deliverable: “{a.name}” v{a.current_version}")
+        lines.append("")
+    lines += ["## Quality assurance", "No independent QA review was performed for this run.", "",
+              "## Verification", "Nothing in this delivery has been independently verified unless a deliverable states "
+              "that tests were run in the sandbox.", ""]
+    services.write_artifact(db, project_id=project.id, run_id=run.id, task_id=None, agent_id=None,
+                            name=f"Final Delivery Summary (run {run.run_number})", content="\n".join(lines),
+                            artifact_type="markdown", summary="Automatic delivery summary.", category="summary")
 
 
 def _new_task(db: Session, run: ProjectRun, agent: ProjectAgent, kind: str, title: str, objective: str,

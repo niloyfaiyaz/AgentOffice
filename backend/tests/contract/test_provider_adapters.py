@@ -51,14 +51,15 @@ async def test_anthropic_request_and_parse():
     seen = []
 
     def h(req):
-        seen.append((req.url.path, json.loads(req.content), dict(req.headers)))
+        seen.append((req.url.path, json.loads(req.content), req.headers))
         return httpx2.Response(200, json=ANTH_RESP)
 
     p = anthropic_with(h, enable_fallbacks=False)
     r = await p.complete(model="claude-opus-5-5", system="sys", messages=CONV, tools=TOOLS, max_tokens=1000, effort="low")
     path, body, headers = seen[0]
     assert path == "/v1/messages"
-    assert headers["x-api-key"] == "sk-ant-test"
+    # SDK 2.x authenticates with either header depending on credential type; the key must be sent.
+    assert "sk-ant-test" in (headers.get("x-api-key") or "") + (headers.get("authorization") or "")
     assert body["system"] == "sys" and body["max_tokens"] == 1000
     assert body["output_config"] == {"effort": "low"}
     assert body["tool_choice"] == {"type": "auto"}  # forced tool choice is never sent

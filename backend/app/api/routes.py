@@ -987,6 +987,7 @@ class DecisionIn(BaseModel):
     agent_limit_usd: Optional[float] = None
     acknowledge_threshold: Optional[bool] = None
     task_ids: Optional[list[str]] = None
+    qa_review: Optional[bool] = None
 
 
 @router.post("/approvals/{aid}/decide")

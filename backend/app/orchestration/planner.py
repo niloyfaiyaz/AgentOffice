@@ -45,6 +45,7 @@ class WorkPlan(BaseModel):
     risks: list[str] = Field(default_factory=list)
     budget_notes: str = ""
     clarification_questions: list[str] = Field(default_factory=list, max_length=5)
+    qa_review: bool = True
 
     @field_validator("tool_requirements")
     @classmethod
@@ -199,9 +200,9 @@ Deadline: {project.deadline or '(none)'}
 {revision}
 
 Instructions:
-- Plan the minimum set of tasks (usually 2-8) that produces the deliverables. Use dependencies so independent tasks can run in parallel.
-- Assign each task to the teammate whose role fits. Delegate to a specialist only when their contribution matters.
-- Do NOT add QA-review or final-consolidation tasks; the system schedules the QA review and your final consolidation automatically.
+- Plan the minimum set of tasks that produces the deliverables (a single task is fine for small requests). Use dependencies so independent tasks can run in parallel.
+- Assign each task to the teammate whose role fits; you may assign tasks to yourself. Involve a specialist only when their contribution clearly matters — not every teammate needs work.
+- Do NOT add QA-review or final-consolidation tasks; the system schedules them. Set qa_review=true when an independent review is worth its cost (it requires a QA Reviewer on the team), false for small or low-risk work.
 - List in tool_requirements any consequential tools (code_execution, test_execution, web_research) the plan needs, and only those that are available.
 - Put questions whose answers would materially change the plan in clarification_questions (max 5). Do not ask for information already given.
 - Call submit_work_plan exactly once with the complete plan."""
@@ -288,6 +289,9 @@ def sow_markdown(project: Project, plan: WorkPlan, team: list[ProjectAgent]) -> 
 
 ## Budget notes
 {plan.budget_notes or '—'}
+
+## Quality assurance
+{"Independent QA review by the QA Reviewer" if plan.qa_review else "No independent QA review planned"}
 
 ## Questions for the client
 {li(plan.clarification_questions)}

@@ -121,7 +121,9 @@ def _sow(db, project, run, ap, decision, body, comment):
             db.add(ProjectRequirement(project_id=project.id, kind="clarification", text=f"{q} — {a}",
                                       source="clarification", run_id=run.id))
     if decision == "approve":
-        raw = body.get("plan") or run.sow
+        raw = dict(body.get("plan") or run.sow)
+        if body.get("qa_review") is not None:
+            raw["qa_review"] = bool(body["qa_review"])
         plan, errors = planner.validate_plan(db, project, raw)
         if plan is None:
             raise DecisionError("The edited plan is invalid: " + "; ".join(errors))

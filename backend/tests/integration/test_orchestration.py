@@ -452,3 +452,72 @@ async def test_worker_main_loop_runs_to_rest(client, fake):
     run = client.post(f"/api/projects/{proj['id']}/runs", json={}).json()
     await worker.main(stop_after_idle=1.5)
     assert run_status(run["id"]) == "awaiting_approval"
+
+
+async def test_single_agent_without_qa_skips_extra_agents(client, fake):
+    """Selective orchestration: a one-task plan with qa_review=false uses one agent and no
+    consolidation model call, even though a QA Reviewer is on the team."""
+    def policy(ctx):
+        if "submit_work_plan" in ctx["tools"]:
+            c = plan_call([T("A", "Pat")])
+            c.input["qa_review"] = False
+            return [c]
+        return simple_worker(ctx)
+
+    p = fake(policy)
+    proj = make_project(client, roles=("project_manager", "business_analyst", "qa_reviewer"))
+    run = await start_and_approve(client, proj["id"])
+    await drive(run["id"])
+    assert run_status(run["id"]) == "completed"
+    ts = tasks_of(client, proj["id"])
+    assert [t["kind"] for t in ts] == ["work"]
+    assert len(p.calls) == 3  # plan + write + complete; no QA, no consolidation call
+    arts = {a["name"]: a for a in client.get(f"/api/projects/{proj['id']}/artifacts").json()}
+    summary = client.get(f"/api/artifacts/{arts['Final Delivery Summary (run 1)']['id']}").json()
+    assert "No independent QA review" in summary["content"]
+    [acc] = pending(client, proj["id"], "deliverable_acceptance")
+    assert acc["payload"]["qa_performed"] is False
+
+
+async def test_client_can_turn_qa_on_at_approval(client, fake):
+    def policy(ctx):
+        if "submit_work_plan" in ctx["tools"]:
+            c = plan_call([T("A", "Bea")])
+            c.input["qa_review"] = False
+            return [c]
+        return simple_worker(ctx)
+
+    fake(policy)
+    proj = make_project(client, roles=("project_manager", "business_analyst", "qa_reviewer"))
+    run = await start_and_approve(client, proj["id"], {"qa_review": True})
+    await drive(run["id"])
+    assert "qa" in [t["kind"] for t in tasks_of(client, proj["id"])]
+
+
+async def test_artifact_ownership_guard_and_agent_memory(client, fake):
+    seen = []
+
+    def w(ctx):
+        if ctx["title"] == "Task B" and "write_artifact" not in ctx["done"]:
+            seen.append(ctx["brief"])
+            return [call("write_artifact", name="Task A", artifact_type="markdown", content="hijack", summary="x")]
+        if ctx["title"] == "Task B":
+            seen.extend(r["content"] for r in ctx["results"])
+            if not any(d == "write_artifact" for d in ctx["done"][1:]):
+                return [call("write_artifact", name="Task B", artifact_type="markdown", content="mine", summary="y")]
+        if ctx["title"] == "Task C" and not ctx["done"]:
+            seen.append(ctx["brief"])
+        return simple_worker(ctx)
+
+    fake(planner_then([T("A", "Bea"), T("B", "Archie", ["A"]), T("C", "Bea", ["B"])], w))
+    proj = make_project(client, roles=("project_manager", "business_analyst", "software_architect"))
+    run = await start_and_approve(client, proj["id"])
+    await drive(run["id"])
+    assert run_status(run["id"]) == "completed"
+    assert any("belongs to Bea" in s for s in seen)
+    arts = {a["name"]: a for a in client.get(f"/api/projects/{proj['id']}/artifacts").json()}
+    assert arts["Task A"]["current_version"] == 1
+    brief_b = next(s for s in seen if "# Your task: Task B" in s)
+    assert "Teammates' tasks" in brief_b and "Bea: Task A" in brief_b
+    brief_c = next(s for s in seen if "# Your task: Task C" in s)
+    assert "Your earlier work on this project" in brief_c and "finished Task A" in brief_c

@@ -158,6 +158,23 @@ def task_message(db: Session, project: Project, run: ProjectRun, task: Task, age
                 contributions.append(f"- {who.display_name if who else '?'} ({t.kind}): {t.title} — {t.result_summary[:300]}")
         parts.append("# Team contributions\n" + "\n".join(contributions))
 
+    if task.kind in ("work", "subtask"):
+        siblings = [t for t in services.run_tasks(db, run.id)
+                    if t.id != task.id and t.kind == "work" and t.status not in ("cancelled", "skipped")]
+        if siblings:
+            lines = []
+            for t in siblings:
+                who = db.get(ProjectAgent, t.assigned_agent_id) if t.assigned_agent_id else None
+                lines.append(f"- {who.display_name if who else '?'}: {t.title} [{t.status}]")
+            parts.append("# Teammates' tasks in this plan (do not duplicate their work)\n" + "\n".join(lines))
+
+    memory = [t for t in db.scalars(select(Task).where(
+        Task.project_id == project.id, Task.assigned_agent_id == agent.id, Task.status == "completed",
+        Task.id != task.id).order_by(Task.completed_at.desc()).limit(5))]
+    if memory:
+        parts.append("# Your earlier work on this project (your notes)\n" + "\n".join(
+            f"- {t.title}: {t.result_summary[:400]}" for t in reversed(memory)))
+
     if task.context_notes:
         parts.append("# Notes from the client\n" + "\n".join(f"- {n}" for n in task.context_notes))
     parts.append(f"# Reference files\n{files_block(db, project)}")

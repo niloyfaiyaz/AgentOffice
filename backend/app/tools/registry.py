@@ -139,6 +139,15 @@ async def h_read_artifact(ctx: ToolContext, args, call_id) -> ToolOutput:
 
 
 async def h_write_artifact(ctx: ToolContext, args, call_id) -> ToolOutput:
+    # Conflict prevention: a teammate's deliverable may only be revised by a task that
+    # targets it (rework / consolidation / an explicit input), never overwritten in passing.
+    existing = _find_artifact(ctx, str(args.get("name", "")))
+    if (existing is not None and existing.owner_agent_id not in (None, ctx.agent.id)
+            and ctx.task.kind not in ("rework", "consolidation")
+            and str(existing.id) not in [str(r) for r in ctx.task.input_refs]):
+        owner = ctx.db.get(ProjectAgent, existing.owner_agent_id)
+        return ToolOutput(f"“{existing.name}” belongs to {owner.display_name if owner else 'a teammate'}. Save your work "
+                          "under a different name, or delegate changes to its owner.", is_error=True)
     try:
         art, ver, created = services.write_artifact(
             ctx.db, project_id=ctx.project.id, run_id=ctx.run.id, task_id=ctx.task.id, agent_id=ctx.agent.id,
