@@ -124,7 +124,8 @@ Commands: `./agentoffice test`, and for e2e `cd frontend && npx playwright test`
 OpenAI (gpt-5.4) is verified end to end with real calls (§5). Still verified only with scripted/fake
 providers and mock-HTTP contract tests:
 - **all live Anthropic calls** (no Anthropic key was provided);
-- QA-triggered rework, mid-run clarification and delegation decided by real models;
+- mid-run clarification asked by a real agent (QA-triggered rework, requirement-change rework and delegation
+  are now verified with real OpenAI models; see [AGENTOFFICE_E2E_ACCEPTANCE_REPORT.md](AGENTOFFICE_E2E_ACCEPTANCE_REPORT.md));
 - the server-side refusal-fallback beta and effort parameter against the live API (graceful
   degradation on rejection is tested with mocks);
 - Anthropic web search; "ask the PM to propose a team"; PM chat answers.

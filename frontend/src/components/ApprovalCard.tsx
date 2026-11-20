@@ -170,10 +170,11 @@ export function ApprovalCard({ a, agents, compact }: { a: Approval; agents: Agen
       )}
       {a.kind === "requirement_change" && (
         <div className="space-y-2 text-sm">
-          {(a.payload.tasks ?? []).map((t: { id: string; title: string }) => (
+          {(a.payload.tasks ?? []).map((t: { id: string; title: string; status?: string }) => (
             <label key={t.id} className="flex items-center gap-2">
               <input type="checkbox" checked={sel.includes(t.id)} onChange={(e) => setSel(e.target.checked ? [...sel, t.id] : sel.filter((x) => x !== t.id))} />
               Rework “{t.title}”
+              {t.status && t.status !== "completed" && <Badge tone="info">in progress — reworked after it finishes</Badge>}
             </label>
           ))}
           <div className="flex gap-2">

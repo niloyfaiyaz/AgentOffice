@@ -7,6 +7,7 @@ import csv
 import hashlib
 import io
 import json
+import re
 import statistics
 import uuid
 from dataclasses import dataclass, field
@@ -139,6 +140,13 @@ async def h_read_artifact(ctx: ToolContext, args, call_id) -> ToolOutput:
 
 
 async def h_write_artifact(ctx: ToolContext, args, call_id) -> ToolOutput:
+    name_arg = str(args.get("name", ""))
+    if _is_qa_report_name(name_arg) and ctx.agent.role_key != "qa_reviewer":
+        return ToolOutput("QA reports are produced by the QA Reviewer's review, not by other roles. Leave QA "
+                          "reporting to the QA Reviewer and save only your own deliverable.", is_error=True)
+    if _FINAL.search(name_arg.replace("_", " ")) and ctx.task.kind != "consolidation":
+        return ToolOutput("The final consolidated deliverable is produced by the Project Manager's consolidation "
+                          "step at the end of the run. Save only your own deliverable.", is_error=True)
     # Conflict prevention: a teammate's deliverable may only be revised by a task that
     # targets it (rework / consolidation / an explicit input), never overwritten in passing.
     existing = _find_artifact(ctx, str(args.get("name", "")))
@@ -310,6 +318,12 @@ async def h_delegate(ctx: ToolContext, args, call_id) -> Union[ToolOutput, Suspe
         return ToolOutput(f"No teammate called '{target_name}'. Team: {names}", is_error=True)
     if target.id == ctx.agent.id:
         return ToolOutput("You cannot delegate to yourself.", is_error=True)
+    planned = db.scalar(select(Task).join(TaskDependency, TaskDependency.task_id == Task.id).where(
+        TaskDependency.depends_on_task_id == ctx.task.id, Task.assigned_agent_id == target.id,
+        Task.status.in_(["pending", "ready"])))
+    if planned is not None:
+        return ToolOutput(f"{target.display_name} already has the planned task “{planned.title}”, which starts after yours "
+                          "and receives your output. Do not delegate overlapping work; finish your own task.", is_error=True)
     objective = str(args.get("objective", "")).strip()
     if not objective:
         return ToolOutput("objective is required", is_error=True)
@@ -424,6 +438,43 @@ async def h_run_tests(ctx: ToolContext, args, call_id) -> Union[ToolOutput, Susp
 SEVERITIES = {"critical", "major", "minor", "info"}
 
 
+def _write_qa_report(ctx: ToolContext, verdict: str, summary: str) -> None:
+    """Deterministic QA report generated from the QA agent's structured review (system-authored
+    from recorded findings, so the report can never claim more than the review recorded)."""
+    db = ctx.db
+    findings = list(db.scalars(select(ReviewFinding).where(ReviewFinding.run_id == ctx.run.id)
+                               .order_by(ReviewFinding.finding_key)))
+    reviewed = [a for a in services.project_artifacts(db, ctx.project.id, include_working=False)
+                if a.category == "deliverable" and not _is_qa_report_name(a.name)]
+    lines = [f"# QA Review Report — run {ctx.run.run_number}", "",
+             f"Reviewer: {ctx.agent.display_name} ({ctx.agent.role}) · model {ctx.agent.provider}/{ctx.agent.model_id}",
+             f"Review task: {ctx.task.title}", f"Verdict: **{verdict}**", "", "## Summary", summary or "(none)", "",
+             "## Deliverables reviewed"]
+    lines += [f"- {a.name} v{a.current_version}" for a in reviewed] or ["- (none)"]
+    lines += ["", "## Findings", "| ID | Severity | Status | Deliverable | Requirement | Evidence | Recommendation |",
+              "|---|---|---|---|---|---|---|"]
+    names = {a.id: a.name for a in services.project_artifacts(db, ctx.project.id)}
+    clean = lambda t: (t or "").replace("|", "/").replace("\n", " ")[:400]  # noqa: E731
+    for f in findings:
+        lines.append(f"| {f.finding_key} | {f.severity} | {f.status} | {clean(names.get(f.artifact_id, '—'))} | "
+                     f"{clean(f.requirement_ref)} | {clean(f.evidence)} | {clean(f.recommendation)} |")
+    if not findings:
+        lines.append("| — | — | — | — | — | No findings recorded | — |")
+    lines += ["", "_This report is generated from the findings the QA Reviewer recorded. A QA pass is a review "
+              "opinion, not proof of correctness._"]
+    services.write_artifact(db, project_id=ctx.project.id, run_id=ctx.run.id, task_id=ctx.task.id, agent_id=ctx.agent.id,
+                            name=f"QA Review Report (run {ctx.run.run_number})", content="\n".join(lines),
+                            artifact_type="markdown", summary=f"QA verdict {verdict}; {len(findings)} finding(s).")
+
+
+_QA_REPORT = re.compile(r"\bqa\b.*\b(report|review)\b|quality assurance.*report|review report", re.I)
+_FINAL = re.compile(r"final[ _-]*(consolidated|delivery|deliverable)|consolidated[ _-]*deliverable", re.I)
+
+
+def _is_qa_report_name(name: str) -> bool:
+    return bool(_QA_REPORT.search(name.replace("_", " ").replace("-", " ")))
+
+
 async def h_submit_review(ctx: ToolContext, args, call_id) -> ToolOutput:
     db = ctx.db
     verdict = str(args.get("verdict", "")).lower()
@@ -459,6 +510,7 @@ async def h_submit_review(ctx: ToolContext, args, call_id) -> ToolOutput:
                 f"{len(resolved)} resolved)", run_id=ctx.run.id, agent_id=ctx.agent.id, task_id=ctx.task.id,
                 agent_status="reviewing",
                 data={"verdict": verdict, "new_findings": [r.finding_key for r in created], "resolved": resolved})
+    _write_qa_report(ctx, verdict, summary)
     return ToolOutput(f"Review recorded: {len(created)} findings ({', '.join(r.finding_key for r in created) or 'none'}); "
                       f"resolved: {', '.join(resolved) or 'none'}. Now call complete_task.")
 

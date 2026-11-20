@@ -1,0 +1,141 @@
+{
+  "documents_checked": {
+    "csv-import-assistant_prd-and-requirements.md": "v2",
+    "csv-import-assistant_technical-feasibility-and-risk-assessment.md": "v3",
+    "csv-import-assistant_qa-review-report.md": "v2",
+    "csv-import-assistant_final-consolidated-deliverable.md": "v2",
+    "csv-import-assistant_final-delivery-summary.md": "v1"
+  },
+  "passed": 14,
+  "total": 15,
+  "results": {
+    "CSV upload requirements": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant_prd-and-requirements.md",
+        "csv-import-assistant_technical-feasibility-and-risk-assessment.md",
+        "csv-import-assistant_qa-review-report.md",
+        "csv-import-assistant_final-consolidated-deliverable.md",
+        "csv-import-assistant_final-delivery-summary.md"
+      ]
+    },
+    "Record preview behavior": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant_prd-and-requirements.md",
+        "csv-import-assistant_technical-feasibility-and-risk-assessment.md",
+        "csv-import-assistant_qa-review-report.md",
+        "csv-import-assistant_final-consolidated-deliverable.md",
+        "csv-import-assistant_final-delivery-summary.md"
+      ]
+    },
+    "Duplicate handling": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant_prd-and-requirements.md",
+        "csv-import-assistant_technical-feasibility-and-risk-assessment.md",
+        "csv-import-assistant_qa-review-report.md",
+        "csv-import-assistant_final-consolidated-deliverable.md",
+        "csv-import-assistant_final-delivery-summary.md"
+      ]
+    },
+    "Row-specific error messaging": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant_prd-and-requirements.md",
+        "csv-import-assistant_technical-feasibility-and-risk-assessment.md",
+        "csv-import-assistant_final-consolidated-deliverable.md"
+      ]
+    },
+    "Import confirmation behavior": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant_prd-and-requirements.md",
+        "csv-import-assistant_technical-feasibility-and-risk-assessment.md",
+        "csv-import-assistant_qa-review-report.md",
+        "csv-import-assistant_final-consolidated-deliverable.md",
+        "csv-import-assistant_final-delivery-summary.md"
+      ]
+    },
+    "Import summary behavior": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant_prd-and-requirements.md",
+        "csv-import-assistant_technical-feasibility-and-risk-assessment.md",
+        "csv-import-assistant_qa-review-report.md",
+        "csv-import-assistant_final-consolidated-deliverable.md",
+        "csv-import-assistant_final-delivery-summary.md"
+      ]
+    },
+    "Updated email-or-phone validation": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant_prd-and-requirements.md",
+        "csv-import-assistant_technical-feasibility-and-risk-assessment.md",
+        "csv-import-assistant_qa-review-report.md",
+        "csv-import-assistant_final-consolidated-deliverable.md",
+        "csv-import-assistant_final-delivery-summary.md"
+      ]
+    },
+    "Rejection only when both contact methods absent/invalid": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant_prd-and-requirements.md",
+        "csv-import-assistant_technical-feasibility-and-risk-assessment.md",
+        "csv-import-assistant_qa-review-report.md",
+        "csv-import-assistant_final-consolidated-deliverable.md",
+        "csv-import-assistant_final-delivery-summary.md"
+      ]
+    },
+    "User stories present": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant_prd-and-requirements.md",
+        "csv-import-assistant_final-consolidated-deliverable.md"
+      ]
+    },
+    "Acceptance criteria (given/when/then or criteria lists)": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant_prd-and-requirements.md",
+        "csv-import-assistant_qa-review-report.md",
+        "csv-import-assistant_final-consolidated-deliverable.md",
+        "csv-import-assistant_final-delivery-summary.md"
+      ]
+    },
+    "Valid and invalid record coverage": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant_prd-and-requirements.md",
+        "csv-import-assistant_technical-feasibility-and-risk-assessment.md",
+        "csv-import-assistant_qa-review-report.md",
+        "csv-import-assistant_final-consolidated-deliverable.md",
+        "csv-import-assistant_final-delivery-summary.md"
+      ]
+    },
+    "Technical assumptions": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant_prd-and-requirements.md",
+        "csv-import-assistant_technical-feasibility-and-risk-assessment.md",
+        "csv-import-assistant_final-consolidated-deliverable.md",
+        "csv-import-assistant_final-delivery-summary.md"
+      ]
+    },
+    "Open questions": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant_prd-and-requirements.md",
+        "csv-import-assistant_final-delivery-summary.md"
+      ]
+    },
+    "Traceable QA findings (F-xxx ids)": {
+      "pass": false,
+      "found_in": []
+    },
+    "No deliverable claims email is always mandatory": {
+      "pass": true,
+      "violations": []
+    }
+  }
+}

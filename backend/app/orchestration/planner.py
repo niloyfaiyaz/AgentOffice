@@ -202,7 +202,7 @@ Deadline: {project.deadline or '(none)'}
 Instructions:
 - Plan the minimum set of tasks that produces the deliverables (a single task is fine for small requests). Use dependencies so independent tasks can run in parallel.
 - Assign each task to the teammate whose role fits; you may assign tasks to yourself. Involve a specialist only when their contribution clearly matters — not every teammate needs work.
-- Do NOT add QA-review or final-consolidation tasks; the system schedules them. Set qa_review=true when an independent review is worth its cost (it requires a QA Reviewer on the team), false for small or low-risk work.
+- Do NOT add QA-review, QA-report or final-consolidation tasks, and do not ask anyone to write a QA report or the final consolidated deliverable: the QA Reviewer's review produces the QA report and you produce the final consolidated deliverable automatically at the end. Set qa_review=true when an independent review is worth its cost (it requires a QA Reviewer on the team), false for small or low-risk work.
 - List in tool_requirements any consequential tools (code_execution, test_execution, web_research) the plan needs, and only those that are available.
 - Put questions whose answers would materially change the plan in clarification_questions (max 5). Do not ask for information already given.
 - Call submit_work_plan exactly once with the complete plan."""

@@ -1079,16 +1079,28 @@ async def post_message(pid: str, body: MessageIn, db: Session = Depends(get_db))
         elif body.intent == "requirement_change":
             db.add(ProjectRequirement(project_id=p.id, kind="change", text=body.content, source="client_message",
                                       run_id=run.id if run else None))
-            done = [t for t in (services.run_tasks(db, run.id) if active else []) if t.status == "completed"
-                    and t.kind in ("work", "subtask", "rework")]
-            if done:
+            # Impact analysis: completed work AND work already in flight (it started with the old
+            # requirement). Tasks that have not started yet pick up the change automatically.
+            impacted = [t for t in (services.run_tasks(db, run.id) if active else [])
+                        if t.kind in ("work", "subtask", "rework")
+                        and t.status in ("completed", "running", "waiting_approval", "waiting_subtask", "paused")]
+            if impacted:
                 services.create_approval(
-                    db, project_id=p.id, run_id=run.id, kind="requirement_change", title="Rework completed tasks for the change?",
+                    db, project_id=p.id, run_id=run.id, kind="requirement_change", title="Rework affected tasks for the change?",
                     explanation=f"New requirement: {body.content}\n\nTasks not yet started will follow it automatically. "
-                                "Select completed tasks that should be reworked.",
-                    payload={"change": body.content, "tasks": [{"id": str(t.id), "title": t.title} for t in done]})
-                reply = ("Recorded the change. Upcoming tasks will follow it. I've listed the completed tasks it may affect "
-                         "— choose which to rework.")
+                                "Select the tasks to rework. In-progress tasks started before the change; their rework runs "
+                                "after they finish.",
+                    payload={"change": body.content,
+                             "tasks": [{"id": str(t.id), "title": t.title, "status": t.status} for t in impacted]})
+                reply = ("Recorded the change. Upcoming tasks will follow it. I've listed the completed and in-progress "
+                         "tasks it may affect — choose which to rework.")
+            elif run is not None and run.status in RUN_TERMINAL:
+                stale = [a for a in services.project_artifacts(db, p.id, include_working=False) if a.category != "plan"]
+                for a in stale:
+                    a.stale = True
+                reply = (f"Recorded the change. The run has already finished, so the {len(stale)} delivered document(s) "
+                         "predate it and are now marked stale. Request a revision (on the acceptance card, or start a "
+                         "new run) to update them.") if stale else "Recorded the change. The next run will follow it."
             else:
                 reply = "Recorded the change. All upcoming work will follow it."
         elif body.intent == "task_feedback":

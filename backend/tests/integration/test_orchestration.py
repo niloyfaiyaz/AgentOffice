@@ -556,3 +556,110 @@ async def test_model_change_applies_at_safe_checkpoint(client, fake):
         assert all(c["id"] in results for c in calls)  # every tool call paired with a result
     types = [e["type"] for e in client.get(f"/api/projects/{proj['id']}/events").json()]
     assert "model_changed" in types and "model_switched" in types
+
+
+# --- Regression tests from the 2026-11-20 acceptance run (docs/AGENTOFFICE_E2E_ACCEPTANCE_REPORT.md) ---
+
+async def test_D1_qa_report_is_written_by_the_qa_review_not_other_roles(client, fake):
+    """D1: the BA wrote 'qa-review-report.md' before QA ran. Non-QA roles may no longer write QA
+    reports or the final consolidated deliverable; the QA review produces a traceable report."""
+    seen = []
+
+    def w(ctx):
+        if ctx["title"] == "Task A" and "write_artifact" not in ctx["done"]:
+            return [call("write_artifact", name="csv_qa-review-report.md", artifact_type="markdown", content="fake QA", summary="x"),
+                    call("write_artifact", name="final-consolidated-deliverable.md", artifact_type="markdown", content="x", summary="x")]
+        if ctx["title"] == "Task A" and ctx["done"].count("write_artifact") == 2:
+            seen.extend(r["content"] for r in ctx["results"])
+            return [call("write_artifact", name="Task A", artifact_type="markdown", content="# PRD", summary="own work")]
+        if "submit_review" in ctx["tools"] and "submit_review" not in ctx["done"]:
+            return [call("submit_review", verdict="pass", summary="Looks complete.", findings=[
+                {"severity": "minor", "artifact": "Task A", "requirement": "R1", "evidence": "typo", "recommendation": "fix"}])]
+        return simple_worker(ctx)
+
+    fake(planner_then([T("A", "Bea")], w))
+    proj = make_project(client, roles=("project_manager", "business_analyst", "qa_reviewer"))
+    run = await start_and_approve(client, proj["id"])
+    await drive(run["id"])
+    assert run_status(run["id"]) == "completed"
+    assert any("QA reports are produced by the QA Reviewer" in s for s in seen)
+    assert any("final consolidated deliverable is produced by the Project Manager" in s for s in seen)
+    arts = {a["name"]: a for a in client.get(f"/api/projects/{proj['id']}/artifacts").json()}
+    assert "csv_qa-review-report.md" not in arts and "final-consolidated-deliverable.md" not in arts
+    rep = arts["QA Review Report (run 1)"]
+    quinn = next(a for a in client.get(f"/api/projects/{proj['id']}/agents").json() if a["display_name"] == "Quinn")
+    assert rep["owner_agent_id"] == quinn["id"]
+    body = client.get(f"/api/artifacts/{rep['id']}").json()["content"]
+    assert "F-001" in body and "Verdict: **pass**" in body and "minor" in body
+
+
+async def test_D2_no_delegating_work_a_teammate_has_planned_after_you(client, fake):
+    """D2: the BA delegated the technical assessment that the Technical Reviewer already had planned."""
+    seen = []
+
+    def w(ctx):
+        if ctx["title"] == "Task A" and "delegate_subtask" not in ctx["done"]:
+            return [call("delegate_subtask", to_agent="Archie", title="Tech assessment", objective="Assess feasibility of the import.")]
+        if ctx["title"] == "Task A":
+            seen.extend(r["content"] for r in ctx["results"])
+        return simple_worker(ctx)
+
+    fake(planner_then([T("A", "Bea"), T("B", "Archie", ["A"])], w))
+    proj = make_project(client, roles=("project_manager", "business_analyst", "software_architect"))
+    run = await start_and_approve(client, proj["id"])
+    await drive(run["id"])
+    assert run_status(run["id"]) == "completed"
+    assert any("already has the planned task" in s for s in seen)
+    assert not [t for t in tasks_of(client, proj["id"]) if t["kind"] == "subtask"]
+
+
+async def test_D3_requirement_change_covers_in_flight_tasks(client, fake):
+    """D3: a task already running when the change arrived was not offered for rework, so it could
+    deliver output based on the old requirement. In-flight tasks are now listed; their rework
+    runs after they finish and sees the change."""
+    gate = {"hold": True}
+    briefs = []
+
+    def w(ctx):
+        if ctx["title"] == "Task A" and gate["hold"] and "ask_client" not in ctx["done"]:
+            return [call("ask_client", question="Which columns are required?")]
+        if ctx["title"].startswith("Rework: Task A") and not ctx["done"]:
+            briefs.append(ctx["brief"])
+        return simple_worker(ctx)
+
+    fake(planner_then([T("A", "Bea")], w))
+    proj = make_project(client, roles=("project_manager", "business_analyst"))
+    run = await start_and_approve(client, proj["id"])
+    await drive(run["id"])  # Task A is now in flight (waiting for the client)
+    r = client.post(f"/api/projects/{proj['id']}/messages",
+                    json={"content": "Email OR phone is enough; reject only if both are missing.", "intent": "requirement_change"}).json()
+    assert "in-progress" in r["reply"]
+    [chg] = pending(client, proj["id"], "requirement_change")
+    entry = next(t for t in chg["payload"]["tasks"] if t["title"] == "Task A")
+    assert entry["status"] == "waiting_approval"
+    client.post(f"/api/approvals/{chg['id']}/decide", json={"decision": "approve", "task_ids": [entry["id"]]})
+    rework = next(t for t in tasks_of(client, proj["id"]) if t["kind"] == "rework")
+    assert rework["status"] == "pending" and entry["id"] in rework["depends_on"]  # waits for the in-flight task
+    gate["hold"] = False
+    [q] = pending(client, proj["id"], "clarification")
+    client.post(f"/api/approvals/{q['id']}/decide", json={"decision": "answer", "answer": "name and email"})
+    await drive(run["id"])
+    assert run_status(run["id"]) == "completed"
+    with SessionLocal() as db:
+        a = db.query(Task).filter(Task.title == "Task A").one()
+        rw = db.query(Task).filter(Task.kind == "rework").one()
+        assert rw.started_at >= a.completed_at  # rework ran after the in-flight task finished
+    assert briefs and "Email OR phone is enough" in briefs[0]
+
+
+async def test_D5_requirement_change_after_completion_marks_deliverables_stale(client, fake):
+    """D5: after a run finished, a change only said 'upcoming work will follow it'."""
+    fake(planner_then([T("A", "Bea")]))
+    proj = make_project(client, roles=("project_manager", "business_analyst"))
+    run = await start_and_approve(client, proj["id"])
+    await drive(run["id"])
+    assert run_status(run["id"]) == "completed"
+    r = client.post(f"/api/projects/{proj['id']}/messages", json={"content": "Phone is enough.", "intent": "requirement_change"}).json()
+    assert "marked stale" in r["reply"] and "revision" in r["reply"]
+    arts = [a for a in client.get(f"/api/projects/{proj['id']}/artifacts").json() if a["category"] != "plan"]
+    assert arts and all(a["stale"] for a in arts)

@@ -254,11 +254,13 @@ def _requirement_change(db, project, run, ap, decision, body, comment):
     ids = body.get("task_ids") or []
     if run is None or run.status in RUN_TERMINAL:
         return
+    note = f"Update for the requirement change: {ap.payload.get('change', '')}"
     for tid in ids:
         t = db.get(Task, uuid.UUID(str(tid)))
-        if t is None or t.run_id != run.id or t.status != "completed":
+        if t is None or t.run_id != run.id or t.status in ("cancelled", "skipped", "failed"):
             continue
-        create_rework(db, run, t, f"Update for the requirement change: {ap.payload.get('change', '')}")
+        # In-flight tasks finish first (they started with the old requirement), then get reworked.
+        create_rework(db, run, t, note, after_original=t.status != "completed")
     wake(db, run)
 
 
@@ -326,7 +328,7 @@ def request_control(db: Session, run: ProjectRun, action: str) -> None:
     sync_project_status(project, run)
 
 
-def create_rework(db: Session, run: ProjectRun, original: Task, note: str) -> Task:
+def create_rework(db: Session, run: ProjectRun, original: Task, note: str, after_original: bool = False) -> Task:
     key = "fb:" + hashlib.sha256(f"{original.id}|{note}".encode()).hexdigest()[:40]
     existing = db.scalar(select(Task).where(Task.run_id == run.id, Task.idempotency_key == key))
     if existing:
@@ -335,9 +337,13 @@ def create_rework(db: Session, run: ProjectRun, original: Task, note: str) -> Ta
     t = Task(project_id=run.project_id, run_id=run.id, assigned_agent_id=agent.id, kind="rework",
              title=f"Rework: {original.title}", objective=f"Revise your earlier deliverable. {note}",
              acceptance_criteria=["The client's feedback is fully addressed"], input_refs=original.output_artifact_ids,
-             allowed_tools=sorted(services.agent_permissions(db, agent)), idempotency_key=key, status="ready",
+             allowed_tools=sorted(services.agent_permissions(db, agent)), idempotency_key=key,
+             status="pending" if after_original else "ready",
              context_notes=[note], max_model_calls=agent.max_calls_per_task, sort_order=original.sort_order)
     db.add(t)
+    if after_original:
+        db.flush()
+        db.add(TaskDependency(task_id=t.id, depends_on_task_id=original.id))
     for aid in original.output_artifact_ids:
         a = db.get(Artifact, uuid.UUID(aid))
         if a:
