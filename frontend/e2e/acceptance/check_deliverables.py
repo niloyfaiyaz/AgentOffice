@@ -35,13 +35,24 @@ CHECKS = {
     "Valid and invalid record coverage": [r"invalid", r"valid"],
     "Technical assumptions": [r"assum"],
     "Open questions": [r"open question"],
-    "Traceable QA findings (F-xxx ids)": [r"\bf-\d{3}\b"],
 }
 results = {}
 for name, pats in CHECKS.items():
     ok = all(re.search(p, corpus) for p in pats)
     where = [n for n, d in docs.items() if all(re.search(p, d.lower()) for p in pats)]
     results[name] = {"pass": ok, "found_in": where}
+
+# Traceable QA: a QA report authored by the QA Reviewer exists, and every finding the review
+# recorded (F-xxx) appears in the delivered documents. Zero findings is valid if the report says so.
+agents = {a["id"]: a for a in ev.get("state", {}).get("agents", [])} if isinstance(ev.get("state"), dict) else {}
+qa_ids = {i for i, a in agents.items() if a.get("role_key") == "qa_reviewer"}
+qa_reports = [n for n, v in latest.items() if re.search(r"\bqa\b.*report|review report", n.replace("_", " "), re.I)]
+qa_authored = [n for n in qa_reports if latest[n]["owner"] in qa_ids]
+keys = [f["finding_key"] for f in ev.get("findings", [])] if isinstance(ev.get("findings"), list) else []
+missing = [k for k in keys if k.lower() not in corpus]
+results["Traceable QA findings (QA-authored report; every finding cited)"] = {
+    "pass": bool(qa_authored) and not missing,
+    "qa_reports": qa_reports, "qa_authored": qa_authored, "findings": keys, "missing": missing}
 
 # Stale-requirement check: statements that email is always mandatory, per sentence/line.
 STALE = re.compile(r"(every|each|all)\s+(contact|row|record)s?[^.\n]{0,40}\b(must|shall|needs? to|is required to)\b[^.\n]{0,30}\bemail"
@@ -57,6 +68,15 @@ for n, d in docs.items():
                 continue
             stale_hits.append({"artifact": n, "text": ctx[:300]})
 results["No deliverable claims email is always mandatory"] = {"pass": not stale_hits, "violations": stale_hits}
+
+# Requirement record (D4): the original email-mandatory rule must be retired, linked to the change.
+reqs = ev.get("state", {}).get("requirements", []) if isinstance(ev.get("state"), dict) else []
+if reqs and any("ref" in r for r in reqs):
+    email_rules = [r for r in reqs if re.search(r"must have a valid email|missing or invalid email", r["text"], re.I)]
+    retired = [r for r in email_rules if r.get("status") == "superseded" and r.get("superseded_by")]
+    results["Original email-mandatory rule superseded in the requirement record"] = {
+        "pass": bool(email_rules) and len(retired) == len(email_rules),
+        "items": [f'{r["ref"]} {r["status"]} -> {r.get("superseded_by")}: {r["text"]}' for r in email_rules]}
 
 summary = {"documents_checked": {n: f'v{v["version"]}' for n, v in latest.items()},
            "passed": sum(r["pass"] for r in results.values()), "total": len(results), "results": results}

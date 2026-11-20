@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import catalog, events, exports, services
+from .. import catalog, events, exports, requirements, services
 from ..config import settings
 from ..db import SessionLocal, get_db
 from ..models import (
@@ -898,8 +898,8 @@ def project_state(pid: str, db: Session = Depends(get_db)):
         "agents": [ser.agent(db, a) for a in services.team(db, p.id)],
         "runs": [ser.run(r) for r in runs], "current_run": ser.run(current) if current else None,
         "tasks": [ser.task(db, t) for t in tasks], "pending_approvals": [ser.approval(a) for a in pending],
-        "requirements": [{"id": str(r.id), "kind": r.kind, "text": r.text, "source": r.source,
-                          "created_at": r.created_at.isoformat()} for r in reqs],
+        "requirements": [requirements.to_dict(db, r) for r in reqs]
+                        + [requirements.to_dict(db, r) for r in requirements.superseded(db, p.id)],
         "estimated_spend_usd": float(services.project_spend(db, p.id)), "last_event_seq": last,
     }
 
@@ -989,6 +989,7 @@ class DecisionIn(BaseModel):
     acknowledge_threshold: Optional[bool] = None
     task_ids: Optional[list[str]] = None
     qa_review: Optional[bool] = None
+    supersede_ids: Optional[list[str]] = None
 
 
 @router.post("/approvals/{aid}/decide")
@@ -1077,32 +1078,47 @@ async def post_message(pid: str, body: MessageIn, db: Session = Depends(get_db))
             decisions.request_control(db, run, "cancel")
             reply = "Understood — I've stopped the team. Completed deliverables are kept."
         elif body.intent == "requirement_change":
-            db.add(ProjectRequirement(project_id=p.id, kind="change", text=body.content, source="client_message",
-                                      run_id=run.id if run else None))
-            # Impact analysis: completed work AND work already in flight (it started with the old
-            # requirement). Tasks that have not started yet pick up the change automatically.
+            change = ProjectRequirement(project_id=p.id, kind="change", text=body.content, source="client_message",
+                                        run_id=run.id if run else None)
+            db.add(change)
+            db.flush()
+            # 1) Which existing requirement items does the change replace? (PM proposal; client confirms)
+            proposal = await requirements.propose_supersession(db, p, change)
+            # 2) Which work is affected: completed AND in-flight tasks (unstarted tasks pick it up automatically).
             impacted = [t for t in (services.run_tasks(db, run.id) if active else [])
                         if t.kind in ("work", "subtask", "rework")
                         and t.status in ("completed", "running", "waiting_approval", "waiting_subtask", "paused")]
-            if impacted:
-                services.create_approval(
-                    db, project_id=p.id, run_id=run.id, kind="requirement_change", title="Rework affected tasks for the change?",
-                    explanation=f"New requirement: {body.content}\n\nTasks not yet started will follow it automatically. "
-                                "Select the tasks to rework. In-progress tasks started before the change; their rework runs "
-                                "after they finish.",
-                    payload={"change": body.content,
-                             "tasks": [{"id": str(t.id), "title": t.title, "status": t.status} for t in impacted]})
-                reply = ("Recorded the change. Upcoming tasks will follow it. I've listed the completed and in-progress "
-                         "tasks it may affect — choose which to rework.")
-            elif run is not None and run.status in RUN_TERMINAL:
-                stale = [a for a in services.project_artifacts(db, p.id, include_working=False) if a.category != "plan"]
-                for a in stale:
+            stale_docs = []
+            if run is not None and run.status in RUN_TERMINAL:
+                stale_docs = [a for a in services.project_artifacts(db, p.id, include_working=False) if a.category != "plan"]
+                for a in stale_docs:
                     a.stale = True
-                reply = (f"Recorded the change. The run has already finished, so the {len(stale)} delivered document(s) "
-                         "predate it and are now marked stale. Request a revision (on the acceptance card, or start a "
-                         "new run) to update them.") if stale else "Recorded the change. The next run will follow it."
-            else:
-                reply = "Recorded the change. All upcoming work will follow it."
+            proposed_refs = [c["ref"] for c in proposal["candidates"] if c["proposed"]]
+            if proposal["candidates"] or impacted:
+                services.create_approval(
+                    db, project_id=p.id, run_id=run.id if run else None, kind="requirement_change",
+                    title=f"Confirm the impact of requirement change {change.ref}",
+                    explanation=f"{change.ref}: {body.content}\n\nConfirm which existing requirements it replaces (they are "
+                                "kept in history but no longer followed) and which tasks to rework. Tasks not yet started "
+                                "follow the change automatically; in-progress tasks are reworked after they finish.",
+                    payload={"change": body.content, "change_requirement_id": str(change.id), "change_ref": change.ref,
+                             "candidates": proposal["candidates"], "proposal_method": proposal["method"],
+                             "proposal_rationale": proposal["rationale"],
+                             "tasks": [{"id": str(t.id), "title": t.title, "status": t.status} for t in impacted]})
+            parts = [f"Recorded the change as {change.ref}."]
+            if proposed_refs:
+                who = "I" if proposal["method"] == "project_manager" else "A keyword check"
+                parts.append(f"{who} propose{'s' if who != 'I' else ''} that it replaces {', '.join(proposed_refs)} — please confirm.")
+            elif proposal["candidates"]:
+                parts.append("I found no existing requirement it clearly replaces — please check the list.")
+            if impacted:
+                parts.append("I've listed the completed and in-progress tasks it may affect — choose which to rework.")
+            if stale_docs:
+                parts.append(f"The run has already finished, so the {len(stale_docs)} delivered document(s) predate the change "
+                             "and are marked stale; request a revision to update them.")
+            elif not impacted:
+                parts.append("Upcoming work will follow it.")
+            reply = " ".join(parts)
         elif body.intent == "task_feedback":
             if not body.task_id:
                 raise HTTPException(422, "Choose the task the feedback is for")
@@ -1146,7 +1162,7 @@ async def _pm_answer(db: Session, p: Project, pm: Optional[ProjectAgent], questi
     tasks = services.run_tasks(db, run.id) if run else []
     status = "\n".join(f"- [{t.status}] {t.title}" for t in tasks) or "(no tasks yet)"
     arts = "\n".join(f"- {a.name} v{a.current_version}" for a in services.project_artifacts(db, p.id)) or "(none)"
-    ctx = (f"Project: {p.name}\nObjective: {p.objective}\nRun status: {run.status if run else 'not started'}\n"
+    ctx = (f"Project: {p.name}\nRequirements:\n{requirements.context_block(db, p.id)}\nRun status: {run.status if run else 'not started'}\n"
            f"Tasks:\n{status}\nDeliverables:\n{arts}\n\nClient question: {question}")
     try:
         res = await call_model(db, project=p, run=None, agent=pm, task=None, purpose="chat",

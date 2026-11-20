@@ -663,3 +663,90 @@ async def test_D5_requirement_change_after_completion_marks_deliverables_stale(c
     assert "marked stale" in r["reply"] and "revision" in r["reply"]
     arts = [a for a in client.get(f"/api/projects/{proj['id']}/artifacts").json() if a["category"] != "plan"]
     assert arts and all(a["stale"] for a in arts)
+
+
+# --- D4: versioned requirement items with explicit supersession ---------------------------------
+CSV_OBJECTIVE = ("Administrators upload CSV contact files.\n\n1. Allow administrators to upload a CSV file.\n"
+                 "2. Identify duplicate contacts within the uploaded file.\n\n"
+                 "Every contact must have a valid email address. Rows with missing or invalid email addresses must be rejected.")
+CR = ("A customer contact may now be imported without an email address if a valid phone number is provided. "
+      "Reject a row only if both contact methods are absent or invalid.")
+
+
+def _reqs(client, pid):
+    return {r["text"]: r for r in client.get(f"/api/projects/{pid}/state").json()["requirements"]}
+
+
+def _csv_project(client):
+    p = make_project(client, roles=("project_manager", "business_analyst"))
+    client.patch(f"/api/projects/{p['id']}", json={"objective": CSV_OBJECTIVE})
+    return p
+
+
+async def test_D4_change_supersedes_specific_items_and_agents_stop_seeing_them(client, fake):
+    briefs = []
+
+    def policy(ctx):
+        if "submit_work_plan" in ctx["tools"]:
+            return [plan_call([T("A", "Bea"), T("B", "Bea", ["A"])])]
+        if "select_superseded" in ctx["tools"]:  # the PM's impact proposal
+            refs = [line.split()[1] for line in ctx["brief"].splitlines() if "email" in line and line.startswith("- R-")]
+            return [call("select_superseded", superseded_refs=refs, rationale="Email is no longer mandatory.")]
+        if ctx["title"] == "Task A" and "ask_client" not in ctx["done"]:
+            return [call("ask_client", question="Proceed?")]
+        if not ctx["done"]:
+            briefs.append((ctx["title"], ctx["brief"]))
+        return simple_worker(ctx)
+
+    fake(policy)
+    proj = _csv_project(client)
+    reqs = _reqs(client, proj["id"])
+    email_rule = reqs["Every contact must have a valid email address."]
+    reject_rule = reqs["Rows with missing or invalid email addresses must be rejected."]
+    dup_rule = reqs["Identify duplicate contacts within the uploaded file."]
+    assert email_rule["ref"].startswith("R-") and email_rule["status"] == "active"
+    run = await start_and_approve(client, proj["id"])
+    await drive(run["id"])  # Task A waits for the client
+    r = client.post(f"/api/projects/{proj['id']}/messages", json={"content": CR, "intent": "requirement_change"}).json()
+    assert "I propose that it replaces" in r["reply"] and email_rule["ref"] in r["reply"]
+    [ap] = pending(client, proj["id"], "requirement_change")
+    assert ap["payload"]["proposal_method"] == "project_manager"
+    proposed = {c["ref"] for c in ap["payload"]["candidates"] if c["proposed"]}
+    assert proposed == {email_rule["ref"], reject_rule["ref"]}
+    client.post(f"/api/approvals/{ap['id']}/decide", json={"decision": "approve", "task_ids": []})
+    reqs = _reqs(client, proj["id"])
+    change_ref = ap["payload"]["change_ref"]
+    assert reqs[email_rule["text"]]["status"] == "superseded" and reqs[email_rule["text"]]["superseded_by"] == change_ref
+    assert reqs[reject_rule["text"]]["superseded_by"] == change_ref
+    assert reqs[dup_rule["text"]]["status"] == "active"  # unrelated rule untouched
+    [q] = pending(client, proj["id"], "clarification")
+    client.post(f"/api/approvals/{q['id']}/decide", json={"decision": "answer", "answer": "yes"})
+    await drive(run["id"])
+    assert run_status(run["id"]) == "completed"
+    brief_b = next(b for t, b in briefs if t == "Task B")
+    active_part, _, retired_part = brief_b.partition("NO LONGER VALID")
+    assert "must have a valid email address" not in active_part  # the stale rule is gone from active requirements
+    assert "must have a valid email address" in retired_part and f"replaced by {change_ref}" in retired_part
+    assert CR in active_part
+    # Editing the brief (which still contains the original sentence) never resurrects the retired rule.
+    client.patch(f"/api/projects/{proj['id']}", json={"name": "renamed"})
+    assert _reqs(client, proj["id"])[email_rule["text"]]["status"] == "superseded"
+    types = [e["type"] for e in client.get(f"/api/projects/{proj['id']}/events").json()]
+    assert "requirement_superseded" in types
+
+
+async def test_D4_client_overrides_the_proposal_and_heuristic_fallback(client, fake):
+    fake(planner_then([T("A", "Bea")]))  # the PM never calls select_superseded -> keyword fallback
+    proj = _csv_project(client)
+    run = await start_and_approve(client, proj["id"])
+    await drive(run["id"])
+    client.post(f"/api/projects/{proj['id']}/messages", json={"content": CR, "intent": "requirement_change"})
+    [ap] = pending(client, proj["id"], "requirement_change")  # run finished -> still asks to confirm supersession
+    assert ap["payload"]["proposal_method"] == "heuristic"
+    cands = {c["text"]: c for c in ap["payload"]["candidates"]}
+    assert cands["Every contact must have a valid email address."]["proposed"]
+    only = cands["Every contact must have a valid email address."]["id"]
+    client.post(f"/api/approvals/{ap['id']}/decide", json={"decision": "approve", "supersede_ids": [only]})
+    reqs = _reqs(client, proj["id"])
+    assert reqs["Every contact must have a valid email address."]["status"] == "superseded"
+    assert reqs["Rows with missing or invalid email addresses must be rejected."]["status"] == "active"  # client unchecked it

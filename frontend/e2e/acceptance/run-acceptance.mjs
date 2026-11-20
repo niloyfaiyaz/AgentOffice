@@ -241,8 +241,18 @@ try {
         // Impacted = every completed task listed: the BA's requirements and anything derived from them.
         const listed = ap.payload.tasks ?? [];
         for (const t of listed) await card.getByRole("checkbox", { name: `Rework “${t.title}”` }).check();
+        // Superseded requirements: accept the PM's pre-selected proposal as shown on the card.
+        const cands = ap.payload.candidates ?? [];
         await card.getByRole("button", { name: "Apply" }).click();
-        evidence.cr.approval = { listed: listed.map((t) => t.title), selected: listed.map((t) => t.title) };
+        await sleep(800);
+        const reqsAfter = (await api(`/projects/${pid}/state`)).requirements;
+        evidence.cr.approval = { listed: listed.map((t) => t.title), selected: listed.map((t) => t.title),
+          supersession_method: ap.payload.proposal_method, supersession_rationale: ap.payload.proposal_rationale,
+          proposed: cands.filter((c) => c.proposed).map((c) => `${c.ref}: ${c.text}`),
+          not_proposed: cands.filter((c) => !c.proposed).map((c) => `${c.ref}: ${c.text}`),
+          superseded_after: reqsAfter.filter((r) => r.superseded_by).map((r) => `${r.ref} -> ${r.superseded_by}: ${r.text}`) };
+        note("CR-001 supersession confirmed", evidence.cr.approval.superseded_after.length > 0,
+          `${ap.payload.proposal_method}: ${evidence.cr.approval.superseded_after.join(" | ")}`);
         note("CR-001 impact approval decided in the UI", true, `listed for rework: ${listed.map((t) => t.title).join(" | ") || "(none)"}`);
         crDecided = true;
       } else if (ap.kind === "clarification") {

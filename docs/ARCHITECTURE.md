@@ -38,6 +38,7 @@ plus the task table) and **one event system** (`agent_events`, streamed over SSE
 | `orchestration/budget.py` | application-enforced spending controls |
 | `orchestration/decisions.py` | approvals and client interventions |
 | `orchestration/context.py` | task-scoped context: requirements, decisions, dependency outputs, agent memory |
+| `requirements.py` | requirement items: brief splitting, stable refs (R-001…), supersession, impact proposal |
 | `tools/` | permission-checked tools, Docker sandbox, file ingestion |
 | `worker.py` | durable worker: leases, heartbeats, restart recovery |
 | `api/routes.py` | HTTP API |
@@ -70,6 +71,22 @@ planning ─► awaiting_approval ─► running ─► completed
    gets a deterministic summary and no extra model call.
 5. **Finalize.** The run completes and a deliverable-acceptance approval states: agent work completed,
    whether QA ran, unresolved findings, and that QA approval is not proof of correctness.
+
+### Requirements and change requests
+
+The brief is split into individual **requirement items** with stable references (R-001…): numbered or
+bulleted lines and normative sentences become `requirement` items, and the rest becomes background
+context. Every new item gets the next reference automatically (`before_flush` hook).
+
+A client **change request**:
+1. Is stored as its own item.
+2. The PM proposes which active items it replaces (model call, budget-checked, with a keyword fallback).
+3. The client confirms the proposal on the approval card.
+4. Replaced items are marked `superseded` and linked through `superseded_by_id` (history kept).
+
+Agents never see the raw brief. They get active items, plus an explicit "NO LONGER VALID" list naming
+what replaced each retired item. Editing the brief never resurrects a retired rule. The same card selects
+completed and in-flight tasks for targeted rework.
 
 ### Safeguards
 

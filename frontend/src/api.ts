@@ -63,8 +63,13 @@ export interface Budget {
 
 export interface ProjectState {
   project: Project; budget: Budget; agents: Agent[]; runs: Run[]; current_run: Run | null; tasks: Task[];
-  pending_approvals: Approval[]; requirements: { id: string; kind: string; text: string; source: string; created_at: string }[];
+  pending_approvals: Approval[]; requirements: Requirement[];
   estimated_spend_usd: number; last_event_seq: number;
+}
+
+export interface Requirement {
+  id: string; ref: string | null; kind: string; text: string; source: string; status: string;
+  superseded_by: string | null; superseded_at: string | null; created_at: string;
 }
 
 export interface Artifact {

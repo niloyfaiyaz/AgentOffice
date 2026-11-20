@@ -9,18 +9,19 @@ printed or committed).
 
 | Question | Answer |
 |---|---|
-| **Overall outcome** | **PARTIAL.** The full journey and the deliverables **pass** on the verified run. Change management **works but is not structurally guaranteed** (open defect D4). |
-| Real OpenAI calls occurred? | **Yes.** 49 real calls across two runs, 119,570 input / 22,549 output tokens, est. **$0.32** total (cap $2). |
+| **Overall outcome** | **PASS** (after fixes). Run 1 found 5 defects; all 5 are fixed and re-verified with real models (runs 2 and 3). The earlier PARTIAL verdict was due to D4, now fixed and verified (§J). |
+| Real OpenAI calls occurred? | **Yes.** 70 real calls across three runs, est. **$0.46** total (cap $2). |
 | Full client journey completed? | **Yes**, through the real UI (Playwright) in both runs. |
 | Requirement change succeeded? | **Yes.** CR-001 was recorded, impacted work was identified, approved and reworked; no restart. |
 | Final artifacts consistent? | **Run 1:** content consistent, but the "QA review report" was not written by QA (defect D1). **Run 2 (after fixes): yes**, 15/15 deterministic checks. No deliverable says email is always mandatory. |
 
-Two real runs were made:
+Three real runs were made:
 - **Run 1** found five defects: D1, D2, D3 and D4 in that run, and D5 in a free scripted dry run beforehand.
 - D1, D2, D3 and D5 were fixed with regression tests.
 - **Run 2** re-executed the identical scenario against the fixed build and confirmed every fix in real
   execution.
-- D4 needs a structural change and is proposed, not executed (§H).
+- D4 needed a data-model change. You approved it, and it was implemented (migration `0002`).
+- **Run 3** verified D4 with real models (§J).
 
 Evidence is under [docs/acceptance/](acceptance/) (run 1) and [docs/acceptance/rerun/](acceptance/rerun/) (run 2):
 `evidence.json` (events, tasks, handoffs, usage records, findings, approvals, messages), `artifacts/` (every
@@ -116,7 +117,7 @@ misread; worth a client review comment.
 | 3 | Identifies impacted work | partial | ✓ | run 1 offered completed tasks only, missing a task already running (D3, fixed) |
 | 4 | Updates the affected tasks | ✓ | ✓ | targeted rework tasks; in-flight rework waits for the original to finish |
 | 5 | Preserves unaffected completed work | n/a | n/a | at CR time every completed task was requirement-derived; unstarted tasks were not rerun but picked up the change |
-| 6 | Prevents stale requirements in later outputs | ✓ observed | ✓ observed | **not structurally enforced**: the original "every contact must have an email" stays *active* next to the change, and agents reconcile via a "latest wins" label (D4) |
+| 6 | Prevents stale requirements in later outputs | ✓ observed | ✓ observed | runs 1-2: not structurally enforced (D4). **Run 3: enforced.** The email rules R-009/R-010 are superseded by R-021, and agents receive them only in a "no longer valid" list (§J) |
 | 7 | Requests approval where required | ✓ | ✓ | impact approval card; client chooses tasks |
 | 8 | Resumes execution appropriately | ✓ | ✓ | no pause or restart needed; independent work continued |
 | 9 | Consistent final artifacts | ✓ (content) | ✓ | stale checks pass in both runs |
@@ -168,11 +169,11 @@ configured prices, not provider invoices.
 | **D1** | High | tools / planner | Run the scenario with "QA review report" as a deliverable | the QA report comes from the QA review, with traceable findings | the BA wrote `qa-review-report.md` *before QA ran*; QA passed with 0 findings in 1 call; the final docs had no F-ids | the QA role had no way to produce a report document; the planner assigned all deliverables to the BA; no role boundary | the QA review generates an owner-attributed **QA Review Report** from recorded findings; non-QA roles cannot write QA reports; only consolidation writes the final consolidated deliverable; planner instruction | `test_D1_…` | ✓ run 2: report by Quinn, F-001/F-002, real rework loop |
 | **D2** | Medium | delegation tool | BA task with a dependent planned task for the Technical Reviewer | no duplicate work | BA delegated the same assessment; it was written 3× | no check for teammates' planned downstream tasks | delegation refused when the target already has a pending/ready task that depends on the current one | `test_D2_…` | ✓ run 2: no duplicate delegation |
 | **D3** | Medium | change management | CR-001 while the dependent task is running | in-flight work included in impact | only completed tasks offered; the running task produced pre-change output | impact list filtered on `completed` | in-flight tasks listed (labelled), their rework depends on them and runs after | `test_D3_…` | ✓ run 2: in-flight task listed, rework ran after it |
-| **D4** | Medium | requirements model | inspect requirements after CR-001 | the original email rule marked superseded | original stays active next to the change | requirements are not granular; the objective is one blob; no supersession link | **not fixed: structural** (§H-1) | — | — |
+| **D4** | Medium | requirements model | inspect requirements after CR-001 | the original email rule marked superseded | original stays active next to the change | requirements are not granular; the objective is one blob; no supersession link | **fixed with your approval**: brief split into items with stable refs; PM proposes the superseded items, the client confirms; retired items are linked and excluded from agent context; migration `0002` | `test_D4_…` ×2, unit ×2, UI ×1 | ✓ run 3 (§J) |
 | **D5** | Low | PM conversation | requirement change after a run completes (dry run) | delivered docs flagged, revision offered | "All upcoming work will follow it"; docs silently stale | no terminal-run branch | deliverables marked stale; reply explains how to revise | `test_D5_…` | automated only (no paid rerun needed) |
 
-Test results after fixes: backend **61 passed** (+4 regression tests), frontend unit **12 passed**,
-Playwright UI e2e **2 passed**, real-provider journey **passed** (run 2).
+Test results after all fixes: backend **65 passed** (+8 regression tests), frontend unit **13 passed**,
+Playwright UI e2e **2 passed**, real acceptance runs 2 and 3 **passed** (15/15 and 16/16 deterministic checks).
 
 Observations, not counted as defects:
 - In run 1, QA passed after one call with 0 findings while D1's misattributed report existed. The QA agent
@@ -182,11 +183,7 @@ Observations, not counted as defects:
 
 ## H. Architectural recommendations (ranked)
 
-1. **Granular, versioned requirements with explicit supersession** (fixes D4; most important). Split
-   the brief into individual requirement items at intake. A change request references the items it
-   replaces (proposed by the PM, confirmed by the client), marking them `superseded_by`. Agents then see
-   only current rules instead of reconciling contradictions. This is a schema and UI change, so I have not
-   done it without your approval.
+1. ~~**Granular, versioned requirements with explicit supersession**~~ **Done** (D4, §J).
 2. **Task ↔ requirement traceability.** The planner tags each task with the requirement IDs it implements.
    Impact analysis can then *propose* exactly the affected tasks, instead of listing all completed and
    in-flight work for the client to choose from. This is what makes targeted rework scale beyond small projects.
@@ -196,17 +193,50 @@ Observations, not counted as defects:
 4. **Deterministic acceptance checks inside QA.** Generate a checklist from the approved acceptance
    criteria and run it alongside the QA agent's opinion, as this report did externally.
 
-Items 1-3 build on existing tables (`project_requirements`, `tasks`, `artifacts`) and need one migration;
-no framework change.
+Items 2-3 build on the new requirement references (tasks and artifacts can now cite `R-xxx` ids) and need
+no framework change. Item 2 is now the most valuable next step.
 
 ## I. Final recommendation
 
 **Yes, AgentOffice is ready for you to test personally**, with these caveats:
-- **Change requests work.** Expect the impact card to list every completed or in-progress task. Until
-  recommendation 1 is built, the original requirement text remains visible next to the change.
+- **Change requests work.** The card proposes which requirements a change replaces, and lists every
+  completed or in-progress task for rework. Choosing exactly which tasks to rework is still up to you,
+  until recommendation 2 is built.
 - **Only OpenAI is verified.** Anthropic models have not been exercised against the live API.
 - **Gate releases on the deterministic checks.** QA is a review opinion. The checklist script in
   `frontend/e2e/acceptance/` can be rerun on any project's evidence.
 
-Nothing blocks personal testing. The decision that needs you is whether to implement recommendation 1
-(requirement versioning), because it changes the data model.
+Nothing blocks personal testing.
+
+## J. Follow-up: D4 requirement versioning, verified with real models (run 3)
+
+**What was built:**
+- Migration `0002`: requirement `ref`, `superseded_by_id`, `superseded_at`, with references backfilled for
+  existing projects.
+- The brief is split into items R-001…; every new item gets a reference automatically.
+- On a change request, the PM proposes the items it replaces; the client confirms or adjusts on the
+  approval card.
+- Replaced items are retired, linked and kept for history.
+- Agents receive only active items, plus an explicit "NO LONGER VALID" list.
+- Editing the brief never resurrects a retired rule.
+
+**Run 3**, the identical scenario on the real app: evidence in [docs/acceptance/d4-verification/](acceptance/d4-verification/).
+
+| Check | Result |
+|---|---|
+| Brief split into items | R-002…R-008 (the 7 required capabilities), R-009 "Every contact must have a valid email address.", R-010 "Rows with missing or invalid email addresses must be rejected." |
+| CR-001 recorded | as **R-021** |
+| PM impact proposal (1 call, est. $0.003) | proposed exactly **R-009 and R-010**; rationale: *"This directly conflicts with R-009 … and R-010"*; the 9 unrelated items were not proposed |
+| Client confirmation in the UI | accepted; record: R-009 → superseded by R-021, R-010 → superseded by R-021 |
+| In-flight and completed tasks reworked | the BA's PRD (completed) and the Technical Reviewer's assessment (running at CR time) were both reworked |
+| QA used the current baseline | QA report: *"reflect the updated validation rule in R-021 … without following superseded R-009/R-010"*; 0 findings |
+| Final deliverable traceability | cites R-021, for example *"the package no longer follows superseded email-only validation"* |
+| Deterministic checklist | **16/16**, including "Original email-mandatory rule superseded in the requirement record" |
+| Cost | 21 calls, est. **$0.1419** (impact proposal $0.003) |
+
+One checklist rule was corrected during this follow-up. "Traceable QA findings" first required an F-id to
+appear even when QA legitimately recorded none. It now requires a QA-authored report, with every recorded
+finding cited. Re-scoring all three runs with the corrected rule leaves run 1 failing (its report was
+written by the BA), so the bar was not lowered.
+
+Cumulative real spend for acceptance testing: **$0.4619** (runs 1-3), under the $2 limit.

@@ -110,6 +110,7 @@ export function ApprovalCard({ a, agents, compact }: { a: Approval; agents: Agen
   const decide = useDecide(a);
   const [text, setText] = useState("");
   const [sel, setSel] = useState<string[]>([]);
+  const [sup, setSup] = useState<string[]>(() => (a.payload.candidates ?? []).filter((c: any) => c.proposed).map((c: any) => c.id));
   const [budget, setBudget] = useState({ budget_usd: "", max_model_calls_per_run: "", agent_limit_usd: "" });
   const who = agents.find((x) => x.id === a.agent_id);
   const d = (body: Record<string, unknown>) => decide.mutate(body);
@@ -169,17 +170,38 @@ export function ApprovalCard({ a, agents, compact }: { a: Approval; agents: Agen
         </div>
       )}
       {a.kind === "requirement_change" && (
-        <div className="space-y-2 text-sm">
-          {(a.payload.tasks ?? []).map((t: { id: string; title: string; status?: string }) => (
-            <label key={t.id} className="flex items-center gap-2">
-              <input type="checkbox" checked={sel.includes(t.id)} onChange={(e) => setSel(e.target.checked ? [...sel, t.id] : sel.filter((x) => x !== t.id))} />
-              Rework “{t.title}”
-              {t.status && t.status !== "completed" && <Badge tone="info">in progress — reworked after it finishes</Badge>}
-            </label>
-          ))}
+        <div className="space-y-3 text-sm">
+          {!!a.payload.candidates?.length && (
+            <fieldset className="space-y-1">
+              <legend className="font-medium">Which current requirements does {a.payload.change_ref ?? "this change"} replace?</legend>
+              <p className="text-xs text-muted">
+                {a.payload.proposal_method === "project_manager" ? "Pre-selected by the project manager" : "Pre-selected by keyword match"}
+                {a.payload.proposal_rationale ? `: ${a.payload.proposal_rationale}` : ""}. Replaced items stay in history but agents stop following them.
+              </p>
+              {a.payload.candidates.map((c: { id: string; ref: string; text: string }) => (
+                <label key={c.id} className="flex items-start gap-2">
+                  <input type="checkbox" className="mt-1" checked={sup.includes(c.id)}
+                    onChange={(e) => setSup(e.target.checked ? [...sup, c.id] : sup.filter((x) => x !== c.id))} />
+                  <span><span className="font-mono text-xs text-muted">{c.ref}</span> {c.text}</span>
+                </label>
+              ))}
+            </fieldset>
+          )}
+          {!!a.payload.tasks?.length && (
+            <fieldset className="space-y-1">
+              <legend className="font-medium">Which tasks should be reworked?</legend>
+              {(a.payload.tasks ?? []).map((t: { id: string; title: string; status?: string }) => (
+                <label key={t.id} className="flex items-center gap-2">
+                  <input type="checkbox" checked={sel.includes(t.id)} onChange={(e) => setSel(e.target.checked ? [...sel, t.id] : sel.filter((x) => x !== t.id))} />
+                  Rework “{t.title}”
+                  {t.status && t.status !== "completed" && <Badge tone="info">in progress — reworked after it finishes</Badge>}
+                </label>
+              ))}
+            </fieldset>
+          )}
           <div className="flex gap-2">
-            <Button variant="primary" onClick={() => d({ decision: "approve", task_ids: sel })}>Apply</Button>
-            <Button onClick={() => d({ decision: "reject" })}>Keep completed work as is</Button>
+            <Button variant="primary" onClick={() => d({ decision: "approve", task_ids: sel, supersede_ids: sup })}>Apply</Button>
+            <Button onClick={() => d({ decision: "reject" })}>Keep everything as is</Button>
           </div>
         </div>
       )}

@@ -85,14 +85,24 @@ class Project(TimestampMixin, Base):
 
 
 class ProjectRequirement(TimestampMixin, Base):
+    """One requirement item. The brief is split into individual items so a change request can
+    supersede exactly the rule it replaces; superseded items are kept (history) and linked to
+    the item that replaced them."""
+
     __tablename__ = "project_requirements"
+    __table_args__ = (UniqueConstraint("project_id", "ref", name="uq_requirement_ref"),)
     id: Mapped[uuid.UUID] = uuid_pk()
     project_id: Mapped[uuid.UUID] = fk("projects.id")
-    # objective | deliverable | constraint | success_criterion | clarification | change | feedback
+    # objective (context) | requirement | deliverable | constraint | success_criterion |
+    # clarification | change | feedback
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")  # active | superseded
+    ref: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # stable per-project id, e.g. R-007
+    superseded_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_requirements.id", ondelete="SET NULL"), nullable=True, index=True)
+    superseded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     run_id: Mapped[Optional[uuid.UUID]] = fk("project_runs.id", nullable=True, ondelete="SET NULL")
 
 

@@ -46,4 +46,25 @@ describe("ApprovalCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enterprise" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("already resolved");
   });
+
+  it("pre-selects the proposed superseded requirements and lets the client override", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    renderCard({ ...base, kind: "requirement_change", title: "Confirm the impact of requirement change R-009", payload: {
+      change_ref: "R-009", proposal_method: "project_manager", proposal_rationale: "Email no longer mandatory",
+      candidates: [{ id: "c1", ref: "R-007", text: "Every contact must have a valid email address.", proposed: true },
+                   { id: "c2", ref: "R-003", text: "Identify duplicate contacts.", proposed: false }],
+      tasks: [{ id: "t1", title: "Draft PRD", status: "completed" }, { id: "t2", title: "Tech review", status: "running" }] } });
+    expect(screen.getByText(/Pre-selected by the project manager/)).toBeInTheDocument();
+    expect(screen.getByText("in progress — reworked after it finishes")).toBeInTheDocument();
+    const r7 = screen.getByRole("checkbox", { name: /R-007/ });
+    const r3 = screen.getByRole("checkbox", { name: /R-003/ });
+    expect(r7).toBeChecked();
+    expect(r3).not.toBeChecked();
+    fireEvent.click(r3);
+    fireEvent.click(screen.getByRole("checkbox", { name: /Rework “Draft PRD”/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).toEqual({ decision: "approve", task_ids: ["t1"], supersede_ids: ["c1", "c2"] });
+  });
 });

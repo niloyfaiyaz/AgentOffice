@@ -178,14 +178,10 @@ async def plan_run(db: Session, run_id: uuid.UUID) -> str:
     user = f"""Prepare a statement of work for the client.
 
 # Project: {project.name}
-Objective: {project.objective}
-Description: {project.description or '(none)'}
-Requested deliverables: {', '.join(project.deliverables) or '(not specified — propose appropriate ones)'}
-Constraints: {project.constraints or '(none)'}
-Success criteria: {project.success_criteria or '(not specified)'}
+Background: {project.description or '(none)'}
 Deadline: {project.deadline or '(none)'}
 
-# Requirements on record
+# Requirements on record (authoritative; the client's brief split into items with stable R-ids)
 {requirements_block(db, project)}
 
 # Team (assign tasks only to these people, by name)

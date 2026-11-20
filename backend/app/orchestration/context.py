@@ -48,13 +48,9 @@ def system_prompt(db: Session, project: Project, agent: ProjectAgent) -> str:
 
 
 def requirements_block(db: Session, project: Project) -> str:
-    reqs = services.active_requirements(db, project.id)
-    if not reqs:
-        return "(none recorded)"
-    label = {"objective": "Objective", "deliverable": "Deliverable", "constraint": "Constraint",
-             "success_criterion": "Success criterion", "clarification": "Client clarification",
-             "change": "Requirement change (latest wins)", "feedback": "Client feedback"}
-    return "\n".join(f"- [{label.get(r.kind, r.kind)}] {r.text}" for r in reqs)
+    from .. import requirements
+
+    return requirements.context_block(db, project.id)
 
 
 def decisions_block(db: Session, project: Project) -> str:
@@ -90,8 +86,8 @@ def task_message(db: Session, project: Project, run: ProjectRun, task: Task, age
         f"Objective: {task.objective}",
         f"Expected output type: {task.expected_output_type}",
         "Acceptance criteria:\n" + ("\n".join(f"- {c}" for c in task.acceptance_criteria) or "- (none given)"),
-        f"# Project: {project.name}\n{project.objective}",
-        f"# Requirements\n{requirements_block(db, project)}",
+        f"# Project: {project.name}",
+        f"# Requirements (authoritative; R-ids are stable references)\n{requirements_block(db, project)}",
     ]
     if run.kind == "revision" and run.revision_feedback:
         parts.append(f"# Client revision request for this run\n{run.revision_feedback}")
@@ -138,7 +134,9 @@ def task_message(db: Session, project: Project, run: ProjectRun, task: Task, age
         parts.append("# Deliverables under review\n" + ("\n".join(artifact_digest(db, a) for a in all_arts if a.category == "deliverable")
                                                         or "(none)"))
         crit = run.sow.get("acceptance_criteria") or []
-        parts.append("# Approved acceptance criteria\n" + ("\n".join(f"- {c}" for c in crit) or "- (see task criteria)"))
+        parts.append("# Approved acceptance criteria\n" + ("\n".join(f"- {c}" for c in crit) or "- (see task criteria)")
+                     + "\nWhere these conflict with the current requirements above, the requirements win. Report any "
+                       "deliverable that still follows an item marked NO LONGER VALID as a major finding.")
         if prior:
             parts.append("# Earlier findings (resolve fixed ones via resolved_finding_keys)\n" + "\n".join(
                 f"- {f.finding_key} [{f.severity}/{f.status}] {f.requirement_ref}: {f.evidence[:300]}" for f in prior))

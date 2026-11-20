@@ -1,0 +1,135 @@
+{
+  "documents_checked": {
+    "csv_import_assistant_prd_user_stories_acceptance_criteria.md": "v2",
+    "csv_import_assistant_technical_feasibility_risk_assessment.md": "v2",
+    "QA Review Report (run 1)": "v1",
+    "final_consolidated_project_delivery.md": "v1"
+  },
+  "passed": 16,
+  "total": 16,
+  "results": {
+    "CSV upload requirements": {
+      "pass": true,
+      "found_in": [
+        "csv_import_assistant_prd_user_stories_acceptance_criteria.md",
+        "csv_import_assistant_technical_feasibility_risk_assessment.md",
+        "final_consolidated_project_delivery.md"
+      ]
+    },
+    "Record preview behavior": {
+      "pass": true,
+      "found_in": [
+        "csv_import_assistant_prd_user_stories_acceptance_criteria.md",
+        "csv_import_assistant_technical_feasibility_risk_assessment.md",
+        "final_consolidated_project_delivery.md"
+      ]
+    },
+    "Duplicate handling": {
+      "pass": true,
+      "found_in": [
+        "csv_import_assistant_prd_user_stories_acceptance_criteria.md",
+        "csv_import_assistant_technical_feasibility_risk_assessment.md",
+        "final_consolidated_project_delivery.md"
+      ]
+    },
+    "Row-specific error messaging": {
+      "pass": true,
+      "found_in": [
+        "csv_import_assistant_prd_user_stories_acceptance_criteria.md",
+        "csv_import_assistant_technical_feasibility_risk_assessment.md",
+        "final_consolidated_project_delivery.md"
+      ]
+    },
+    "Import confirmation behavior": {
+      "pass": true,
+      "found_in": [
+        "csv_import_assistant_prd_user_stories_acceptance_criteria.md",
+        "csv_import_assistant_technical_feasibility_risk_assessment.md",
+        "final_consolidated_project_delivery.md"
+      ]
+    },
+    "Import summary behavior": {
+      "pass": true,
+      "found_in": [
+        "csv_import_assistant_prd_user_stories_acceptance_criteria.md",
+        "csv_import_assistant_technical_feasibility_risk_assessment.md",
+        "QA Review Report (run 1)",
+        "final_consolidated_project_delivery.md"
+      ]
+    },
+    "Updated email-or-phone validation": {
+      "pass": true,
+      "found_in": [
+        "csv_import_assistant_prd_user_stories_acceptance_criteria.md",
+        "csv_import_assistant_technical_feasibility_risk_assessment.md",
+        "final_consolidated_project_delivery.md"
+      ]
+    },
+    "Rejection only when both contact methods absent/invalid": {
+      "pass": true,
+      "found_in": [
+        "csv_import_assistant_prd_user_stories_acceptance_criteria.md",
+        "csv_import_assistant_technical_feasibility_risk_assessment.md",
+        "final_consolidated_project_delivery.md"
+      ]
+    },
+    "User stories present": {
+      "pass": true,
+      "found_in": [
+        "csv_import_assistant_prd_user_stories_acceptance_criteria.md"
+      ]
+    },
+    "Acceptance criteria (given/when/then or criteria lists)": {
+      "pass": true,
+      "found_in": [
+        "csv_import_assistant_prd_user_stories_acceptance_criteria.md",
+        "final_consolidated_project_delivery.md"
+      ]
+    },
+    "Valid and invalid record coverage": {
+      "pass": true,
+      "found_in": [
+        "csv_import_assistant_prd_user_stories_acceptance_criteria.md",
+        "csv_import_assistant_technical_feasibility_risk_assessment.md",
+        "final_consolidated_project_delivery.md"
+      ]
+    },
+    "Technical assumptions": {
+      "pass": true,
+      "found_in": [
+        "csv_import_assistant_prd_user_stories_acceptance_criteria.md",
+        "csv_import_assistant_technical_feasibility_risk_assessment.md",
+        "final_consolidated_project_delivery.md"
+      ]
+    },
+    "Open questions": {
+      "pass": true,
+      "found_in": [
+        "csv_import_assistant_prd_user_stories_acceptance_criteria.md",
+        "final_consolidated_project_delivery.md"
+      ]
+    },
+    "Traceable QA findings (QA-authored report; every finding cited)": {
+      "pass": true,
+      "qa_reports": [
+        "QA Review Report (run 1)"
+      ],
+      "qa_authored": [
+        "QA Review Report (run 1)"
+      ],
+      "findings": [],
+      "missing": []
+    },
+    "No deliverable claims email is always mandatory": {
+      "pass": true,
+      "violations": []
+    },
+    "Original email-mandatory rule superseded in the requirement record": {
+      "pass": true,
+      "items": [
+        "R-009 superseded -> R-021: Every contact must have a valid email address.",
+        "R-010 superseded -> R-021: Rows with missing or invalid email addresses must be rejected."
+      ]
+    }
+  }
+}

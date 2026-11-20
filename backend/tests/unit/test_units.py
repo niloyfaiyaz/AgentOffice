@@ -148,3 +148,36 @@ def test_provider_clients_are_not_shared_across_event_loops():
     a1 = asyncio.run(get())
     a2 = asyncio.run(get())
     assert a1 is not a2  # a client created on a closed loop must never be reused
+
+
+CSV_BRIEF = """Administrators upload CSV files of customer contacts. They need a preview-and-validation workflow.
+
+The CSV import feature must:
+1. Allow administrators to upload a CSV file.
+2. Display a preview of the imported records.
+
+Every contact must have a valid email address. Rows with missing or invalid email addresses must be rejected."""
+
+
+def test_split_brief_into_requirement_items():
+    from app.requirements import split_brief
+
+    items = split_brief(CSV_BRIEF)
+    reqs = [t for k, t in items if k == "requirement"]
+    assert items[0][0] == "objective" and "preview-and-validation" in items[0][1]
+    assert "The CSV import feature must:" in items[0][1]  # an intro line is context, not a rule
+    assert reqs == ["Allow administrators to upload a CSV file.", "Display a preview of the imported records.",
+                    "Every contact must have a valid email address.",
+                    "Rows with missing or invalid email addresses must be rejected."]
+
+
+def test_heuristic_supersession_candidates():
+    from types import SimpleNamespace
+    from app.requirements import heuristic_candidates
+
+    items = [SimpleNamespace(text=t) for t in ["Every contact must have a valid email address.",
+                                               "Rows with missing or invalid email addresses must be rejected.",
+                                               "Display a preview of the imported records."]]
+    cr = ("A customer contact may now be imported without an email address if a valid phone number is provided. "
+          "Reject a row only if both contact methods are absent or invalid.")
+    assert [i.text for i in heuristic_candidates(cr, items)] == [items[0].text, items[1].text]

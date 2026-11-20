@@ -129,9 +129,14 @@
         "csv-import-assistant_final-delivery-summary.md"
       ]
     },
-    "Traceable QA findings (F-xxx ids)": {
+    "Traceable QA findings (QA-authored report; every finding cited)": {
       "pass": false,
-      "found_in": []
+      "qa_reports": [
+        "csv-import-assistant_qa-review-report.md"
+      ],
+      "qa_authored": [],
+      "findings": [],
+      "missing": []
     },
     "No deliverable claims email is always mandatory": {
       "pass": true,

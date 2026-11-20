@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import events
+from . import requirements as _requirements  # noqa: F401  (registers ref assignment)
 from .models import (
     ApprovalRequest, Artifact, ArtifactVersion, BudgetPolicy, ModelConfiguration, Project, ProjectAgent,
     ProjectRequirement, ProjectRun, Task, TaskDependency, ToolPermission, UsageRecord, utcnow,
@@ -112,36 +113,16 @@ def pending_approvals(db: Session, run_id: uuid.UUID) -> list[ApprovalRequest]:
 
 # -- requirements ------------------------------------------------------------------
 def active_requirements(db: Session, project_id: uuid.UUID) -> list[ProjectRequirement]:
-    return list(db.scalars(select(ProjectRequirement).where(ProjectRequirement.project_id == project_id,
-                                                            ProjectRequirement.status == "active")
-                           .order_by(ProjectRequirement.created_at)))
+    from . import requirements
+
+    return requirements.active(db, project_id)
 
 
 def sync_core_requirements(db: Session, project: Project) -> None:
-    """Mirror the project form fields into ProjectRequirement rows (source=user)."""
-    wanted: list[tuple[str, str]] = []
-    if project.objective.strip():
-        wanted.append(("objective", project.objective.strip()))
-    for d in project.deliverables or []:
-        if str(d).strip():
-            wanted.append(("deliverable", str(d).strip()))
-    if project.constraints.strip():
-        wanted.append(("constraint", project.constraints.strip()))
-    if project.success_criteria.strip():
-        wanted.append(("success_criterion", project.success_criteria.strip()))
-    existing = list(db.scalars(select(ProjectRequirement).where(
-        ProjectRequirement.project_id == project.id, ProjectRequirement.source == "user",
-        ProjectRequirement.status == "active", ProjectRequirement.kind.in_(
-            ["objective", "deliverable", "constraint", "success_criterion"]))))
-    keep = set(wanted)
-    have = {(r.kind, r.text) for r in existing}
-    for r in existing:
-        if (r.kind, r.text) not in keep:
-            r.status = "superseded"
-    for kind, text in wanted:
-        if (kind, text) not in have:
-            db.add(ProjectRequirement(project_id=project.id, kind=kind, text=text, source="user"))
-    db.flush()
+    """Mirror the brief into individual requirement items (see app.requirements)."""
+    from . import requirements
+
+    requirements.sync_core(db, project)
 
 
 # -- budgets & usage ---------------------------------------------------------------

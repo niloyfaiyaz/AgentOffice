@@ -247,10 +247,20 @@ def _task_failure(db, project, run, ap, decision, body, comment):
 
 
 def _requirement_change(db, project, run, ap, decision, body, comment):
+    from .. import requirements
+
     if decision != "approve":
         ap.status = "rejected"
         return
     ap.status = "approved"
+    change_id = ap.payload.get("change_requirement_id")
+    change = db.get(ProjectRequirement, uuid.UUID(change_id)) if change_id else None
+    sup = body.get("supersede_ids")
+    if sup is None:  # default: the proposal shown on the card
+        sup = [c["id"] for c in ap.payload.get("candidates", []) if c.get("proposed")]
+    if change is not None and sup:
+        done = requirements.supersede(db, project.id, list(sup), change, run_id=run.id if run else None)
+        ap.payload = {**ap.payload, "superseded_refs": [r.ref for r in done]}
     ids = body.get("task_ids") or []
     if run is None or run.status in RUN_TERMINAL:
         return

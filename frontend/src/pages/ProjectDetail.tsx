@@ -152,9 +152,24 @@ function Overview({ s }: { s: ProjectState }) {
           )}
         </Card>
         <Card title="Requirements on record">
-          <ul className="space-y-1 text-sm">
-            {s.requirements.map((r) => <li key={r.id}><Badge>{r.kind.replace("_", " ")}</Badge> <span className="text-muted">{r.text}</span></li>)}
+          <p className="mb-2 text-xs text-muted">Your brief split into items. This list is what agents follow; items replaced by a change
+            are kept for history and no longer followed.</p>
+          <ul className="space-y-1.5 text-sm">
+            {s.requirements.filter((r) => r.status === "active").map((r) => (
+              <li key={r.id}><span className="font-mono text-xs text-muted">{r.ref}</span> <Badge tone={r.kind === "change" ? "info" : "muted"}>{r.kind.replace("_", " ")}</Badge> <span>{r.text}</span></li>
+            ))}
           </ul>
+          {s.requirements.some((r) => r.superseded_by) && (
+            <details className="mt-3 text-sm">
+              <summary className="cursor-pointer text-muted">Replaced requirements ({s.requirements.filter((r) => r.superseded_by).length})</summary>
+              <ul className="mt-1 space-y-1">
+                {s.requirements.filter((r) => r.superseded_by).map((r) => (
+                  <li key={r.id} className="text-muted"><span className="font-mono text-xs">{r.ref}</span>{" "}
+                    <span className="line-through">{r.text}</span> <Badge tone="warn">replaced by {r.superseded_by}</Badge></li>
+                ))}
+              </ul>
+            </details>
+          )}
         </Card>
       </div>
     </div>

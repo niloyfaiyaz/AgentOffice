@@ -114,12 +114,19 @@
         "final_consolidated_project_deliverable.md"
       ]
     },
-    "Traceable QA findings (F-xxx ids)": {
+    "Traceable QA findings (QA-authored report; every finding cited)": {
       "pass": true,
-      "found_in": [
-        "QA Review Report (run 1)",
-        "final_consolidated_project_deliverable.md"
-      ]
+      "qa_reports": [
+        "QA Review Report (run 1)"
+      ],
+      "qa_authored": [
+        "QA Review Report (run 1)"
+      ],
+      "findings": [
+        "F-001",
+        "F-002"
+      ],
+      "missing": []
     },
     "No deliverable claims email is always mandatory": {
       "pass": true,
