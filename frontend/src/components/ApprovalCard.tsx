@@ -8,7 +8,7 @@ import { Badge, Button, ErrorText, Field, inputCls } from "../ui";
 const KIND_LABEL: Record<string, string> = {
   sow: "Statement of work", clarification: "Question from the team", tool_authorization: "Tool authorization",
   budget: "Budget decision", task_failure: "Task failed", requirement_change: "Requirement change",
-  scope_change: "Scope change", deliverable_acceptance: "Final acceptance",
+  scope_change: "Scope change", deliverable_acceptance: "Final acceptance", stale_artifacts: "Delivery blocked",
 };
 
 function useDecide(a: Approval) {
@@ -48,7 +48,7 @@ function SowEditor({ a, agents }: { a: Approval; agents: Agent[] }) {
         <h4 className="mb-1 font-medium">Work plan — edit assignments or remove tasks</h4>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="text-xs text-muted"><tr><th className="py-1">Task</th><th>Assigned to</th><th>Depends on</th><th>Output</th><th></th></tr></thead>
+            <thead className="text-xs text-muted"><tr><th className="py-1">Task</th><th>Assigned to</th><th>Depends on / implements</th><th>Output</th><th></th></tr></thead>
             <tbody>
               {tasks.map((t, i) => (
                 <tr key={t.key} className="border-t border-line align-top">
@@ -62,7 +62,7 @@ function SowEditor({ a, agents }: { a: Approval; agents: Agent[] }) {
                       {agents.map((x) => <option key={x.id} value={x.display_name}>{x.display_name} ({x.role})</option>)}
                     </select>
                   </td>
-                  <td className="pr-2 text-xs">{(t.depends_on ?? []).join(", ") || "—"}</td>
+                  <td className="pr-2 text-xs">{(t.depends_on ?? []).join(", ") || "—"}<div className="text-muted">{(t.requirement_refs ?? []).join(", ")}</div></td>
                   <td className="pr-2 text-xs">{t.expected_output_type}</td>
                   <td><Button variant="ghost" aria-label={`Remove ${t.title}`} disabled={tasks.length === 1} onClick={() => setTasks(tasks.filter((_, j) => j !== i))}>Remove</Button></td>
                 </tr>
@@ -109,8 +109,20 @@ function SowEditor({ a, agents }: { a: Approval; agents: Agent[] }) {
 export function ApprovalCard({ a, agents, compact }: { a: Approval; agents: Agent[]; compact?: boolean }) {
   const decide = useDecide(a);
   const [text, setText] = useState("");
-  const [sel, setSel] = useState<string[]>([]);
   const [sup, setSup] = useState<string[]>(() => (a.payload.candidates ?? []).filter((c: any) => c.proposed).map((c: any) => c.id));
+  const proposedTasks = (chosen: string[]) => {
+    const byCand: Record<string, string[]> = a.payload.impact_by_candidate ?? {};
+    const fromCands = new Set(chosen.flatMap((c) => byCand[c] ?? []));
+    return (a.payload.tasks ?? []).filter((t: any) => ["rework", "rework_after"].includes(t.action) || fromCands.has(t.id))
+      .filter((t: any) => t.action !== "confirm" && (t.action !== "if_selected" || fromCands.has(t.id))).map((t: any) => t.id);
+  };
+  const [sel, setSel] = useState<string[]>(() => proposedTasks((a.payload.candidates ?? []).filter((c: any) => c.proposed).map((c: any) => c.id)));
+  const [touched, setTouched] = useState(false);
+  const toggleSup = (id: string, on: boolean) => {
+    const next = on ? [...sup, id] : sup.filter((x) => x !== id);
+    setSup(next);
+    if (!touched) setSel(proposedTasks(next));
+  };
   const [budget, setBudget] = useState({ budget_usd: "", max_model_calls_per_run: "", agent_limit_usd: "" });
   const who = agents.find((x) => x.id === a.agent_id);
   const d = (body: Record<string, unknown>) => decide.mutate(body);
@@ -181,7 +193,7 @@ export function ApprovalCard({ a, agents, compact }: { a: Approval; agents: Agen
               {a.payload.candidates.map((c: { id: string; ref: string; text: string }) => (
                 <label key={c.id} className="flex items-start gap-2">
                   <input type="checkbox" className="mt-1" checked={sup.includes(c.id)}
-                    onChange={(e) => setSup(e.target.checked ? [...sup, c.id] : sup.filter((x) => x !== c.id))} />
+                    onChange={(e) => toggleSup(c.id, e.target.checked)} />
                   <span><span className="font-mono text-xs text-muted">{c.ref}</span> {c.text}</span>
                 </label>
               ))}
@@ -190,18 +202,46 @@ export function ApprovalCard({ a, agents, compact }: { a: Approval; agents: Agen
           {!!a.payload.tasks?.length && (
             <fieldset className="space-y-1">
               <legend className="font-medium">Which tasks should be reworked?</legend>
-              {(a.payload.tasks ?? []).map((t: { id: string; title: string; status?: string }) => (
-                <label key={t.id} className="flex items-center gap-2">
-                  <input type="checkbox" checked={sel.includes(t.id)} onChange={(e) => setSel(e.target.checked ? [...sel, t.id] : sel.filter((x) => x !== t.id))} />
-                  Rework “{t.title}”
-                  {t.status && t.status !== "completed" && <Badge tone="info">in progress — reworked after it finishes</Badge>}
+              <p className="text-xs text-muted">Proposed from task–requirement links and artifact lineage. Unaffected work is kept.</p>
+              {(a.payload.tasks ?? []).map((t: any) => (
+                <label key={t.id} className="flex items-start gap-2">
+                  <input type="checkbox" className="mt-1" checked={sel.includes(t.id)}
+                    onChange={(e) => { setTouched(true); setSel(e.target.checked ? [...sel, t.id] : sel.filter((x) => x !== t.id)); }} />
+                  <span>Rework “{t.title}” {t.reason && <span className="text-xs text-muted">— {t.reason}</span>}{" "}
+                    {(t.action === "rework_after" || (!t.action && t.status && t.status !== "completed")) &&
+                      <Badge tone="info">in progress — reworked after it finishes</Badge>}
+                    {t.impact === "uncertain" && <Badge tone="warn">needs your confirmation</Badge>}
+                    {t.action === "if_selected" && <Badge>only if that requirement is replaced</Badge>}
+                  </span>
                 </label>
               ))}
             </fieldset>
           )}
+          {!!a.payload.artifacts_at_risk?.length && (
+            <div className="text-xs"><span className="font-medium">Deliverables that become stale:</span>{" "}
+              {a.payload.artifacts_at_risk.map((x: any) => `${x.name} v${x.version}`).join(", ")}</div>
+          )}
+          {!!a.payload.preserved_tasks?.length && (
+            <div className="text-xs text-muted"><span className="font-medium">Unaffected (kept):</span> {a.payload.preserved_tasks.join(", ")}</div>
+          )}
           <div className="flex gap-2">
             <Button variant="primary" onClick={() => d({ decision: "approve", task_ids: sel, supersede_ids: sup })}>Apply</Button>
             <Button onClick={() => d({ decision: "reject" })}>Keep everything as is</Button>
+          </div>
+        </div>
+      )}
+      {a.kind === "stale_artifacts" && (
+        <div className="space-y-2 text-sm">
+          <ul className="space-y-1">
+            {(a.payload.artifacts ?? []).map((x: any) => (
+              <li key={x.artifact_id}><span className="font-medium">{x.name}</span> v{x.version} <span className="text-xs text-muted">— {x.reason}</span></li>
+            ))}
+          </ul>
+          <p className="text-xs text-muted">Stale versions are kept for audit. Rework creates targeted tasks for the agents who produced them.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" onClick={() => d({ decision: "approve", option: "rework" })}>Rework them</Button>
+            <Button onClick={() => d({ decision: "approve", option: "confirm" })}>I've checked — they're current</Button>
+            <Button variant="danger" onClick={() => d({ decision: "reject", option: "cancel" })}>Cancel run</Button>
           </div>
         </div>
       )}

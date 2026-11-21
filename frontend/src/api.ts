@@ -41,6 +41,7 @@ export interface Task {
   acceptance_criteria: string[]; allowed_tools: string[]; status: string; depth: number; retry_count: number;
   max_retries: number; output_artifact_ids: string[]; result_summary: string; error: string; depends_on: string[];
   context_notes: string[]; estimated_spend_usd: number; started_at: string | null; completed_at: string | null;
+  requirement_refs?: string[]; former_requirement_refs?: string[];
 }
 
 export interface Approval {
@@ -75,8 +76,10 @@ export interface Requirement {
 export interface Artifact {
   id: string; project_id: string; run_id: string | null; task_id: string | null; owner_agent_id: string | null;
   name: string; artifact_type: string; category: string; current_version: number; acceptance_status: string;
-  stale: boolean; summary: string; size: number; updated_at: string; content?: string; source_refs?: string[];
-  versions?: { version: number; summary: string; created_at: string; created_by_agent_id: string | null; sha256: string }[];
+  stale: boolean; stale_reason?: string; confirmed_version?: number | null; summary: string; size: number; updated_at: string;
+  content?: string; source_refs?: string[];
+  versions?: { version: number; summary: string; created_at: string; created_by_agent_id: string | null; sha256: string;
+               requirement_refs?: string[]; inputs?: string[] }[];
   viewing_version?: number; findings?: Finding[];
 }
 

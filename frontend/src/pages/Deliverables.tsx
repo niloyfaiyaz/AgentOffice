@@ -43,7 +43,7 @@ export function DeliverablesPage({ pid }: { pid: string }) {
                     className={`w-full rounded-md px-2 py-1.5 text-left text-sm ${sel === x.id ? "bg-accent/15" : "hover:bg-panel2"}`}>
                     <div className="truncate font-medium">{x.name}</div>
                     <div className="flex flex-wrap gap-1 text-xs text-muted">v{x.current_version} · {x.artifact_type} · {agentName(x.owner_agent_id)}
-                      <StatusBadge status={x.acceptance_status} />{x.stale && <Badge tone="warn" title="Affected by a later requirement change">stale</Badge>}</div>
+                      <StatusBadge status={x.acceptance_status} />{x.stale && <Badge tone="warn" title={x.stale_reason || "Affected by a later requirement change"}>stale</Badge>}</div>
                   </button></li>
                 ))}</ul>
               </div>
@@ -60,6 +60,9 @@ export function DeliverablesPage({ pid }: { pid: string }) {
                 {EXPORTS[a.artifact_type]?.map((f) => <a key={f} className="rounded-md border border-line px-2 py-1 text-xs hover:bg-panel2" href={`/api/artifacts/${a.id}/export?format=${f}`} download>.{f}</a>)}
               </>}>
               <p className="mb-2 text-sm text-muted">{a.versions?.find((v) => v.version === a.viewing_version)?.summary}</p>
+              {a.stale && <p role="status" className="mb-2 rounded-md bg-warn/10 p-2 text-sm text-warn">Not current: {a.stale_reason}</p>}
+              {(() => { const v = a.versions?.find((x) => x.version === a.viewing_version); return v && (
+                <p className="mb-2 text-xs text-muted">Implements: {v.requirement_refs?.join(", ") || "—"}{v.inputs?.length ? ` · derived from: ${v.inputs.join(", ")}` : ""}</p>); })()}
               {!!a.source_refs?.length && <p className="mb-2 text-xs text-muted">Sources: {a.source_refs.join(" · ")}</p>}
               <pre className="prose-doc max-h-[60vh] overflow-auto rounded-md border border-line bg-bg p-3">{a.content}</pre>
               <div className="mt-3 space-y-2 border-t border-line pt-3">

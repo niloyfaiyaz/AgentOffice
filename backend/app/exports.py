@@ -109,7 +109,9 @@ def export_project(db: Session, project: Project) -> Path:
                 arc = f"{a.category}/{_slug(a.name)}.{ext}"
             z.writestr(arc, v.content)
             manifest.append({"name": a.name, "path": arc, "version": v.version, "type": a.artifact_type,
-                             "acceptance": a.acceptance_status, "sha256": v.sha256})
+                             "acceptance": a.acceptance_status, "sha256": v.sha256, "stale": a.stale,
+                             "stale_reason": a.stale_reason, "requirement_ids": v.requirement_ids,
+                             "input_version_ids": v.input_version_ids})
         findings = db.query(ReviewFinding).filter(ReviewFinding.project_id == project.id).all()
         z.writestr("qa/findings.json", json.dumps([
             {"key": f.finding_key, "severity": f.severity, "status": f.status, "requirement": f.requirement_ref,

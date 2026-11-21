@@ -71,6 +71,7 @@ class ScriptedProvider(Provider):
 
     def _plan(self, brief: str) -> ToolCall:
         team = [(m["name"].strip(), m["role"].strip()) for m in TEAM_LINE.finditer(brief)]
+        req_refs = re.findall(r"^- (R-\d{3}) \[", brief.split("NO LONGER VALID")[0], re.M) or ["R-001"]
         specialists = [(n, r) for n, r in team if "Project Manager" not in r and "QA" not in r][:3]
         if not specialists:
             specialists = team[:1]
@@ -80,7 +81,8 @@ class ScriptedProvider(Provider):
             title = (f"Discovery: requirements for the {r.lower()} work" if i == 0 else f"{r} deliverable")
             tasks.append({"key": key, "title": title, "objective": f"Produce the {r.lower()} contribution to the project.",
                           "assignee": n, "depends_on": [] if i == 0 else ["T1"], "expected_output_type": "markdown",
-                          "acceptance_criteria": [f"Covers the {r.lower()} perspective", "States assumptions"]})
+                          "acceptance_criteria": [f"Covers the {r.lower()} perspective", "States assumptions"],
+                          "requirement_refs": req_refs if i == 0 else req_refs[:1]})
         plan = {"summary": "Scripted test plan.", "scope": "Deliver the requested documents.",
                 "deliverables": [f"{r} document" for _, r in specialists],
                 "tasks": tasks, "acceptance_criteria": ["Each deliverable addresses the objective"],

@@ -171,6 +171,10 @@ def review_gate(run_id: uuid.UUID) -> str:
         pm = services.orchestrator(db, project.id)
         order = max((t.sort_order for t in tasks), default=0) + 1
 
+        if _stale_gate(db, run, project, stage="pre"):
+            db.commit()
+            return "blocked"
+
         if consolidation is not None:
             return "finalize"
 
@@ -210,6 +214,13 @@ def review_gate(run_id: uuid.UUID) -> str:
                                   key=_key(run.id, "rework", run.review_iterations, agent.id))
                     t.finding_ids = [str(f.id) for f in fs]
                     t.input_refs = arts
+                    from .. import traceability
+
+                    req_ids = set()
+                    for aid in arts:
+                        lv = services.latest_version(db, uuid.UUID(aid))
+                        req_ids |= {str(r) for r in (lv.requirement_ids if lv else [])}
+                    traceability.link(db, t, traceability.current_requirement_ids(db, req_ids), "qa")
                     for f in fs:
                         f.status = "rework_requested"
                     rework.append(t)
@@ -279,9 +290,12 @@ def _deterministic_summary(db: Session, project: Project, run: ProjectRun, deliv
     lines += ["## Quality assurance", "No independent QA review was performed for this run.", "",
               "## Verification", "Nothing in this delivery has been independently verified unless a deliverable states "
               "that tests were run in the sandbox.", ""]
+    inputs = [str(v.id) for t in delivered for aid in t.output_artifact_ids
+              if (v := services.latest_version(db, uuid.UUID(aid))) is not None]
     services.write_artifact(db, project_id=project.id, run_id=run.id, task_id=None, agent_id=None,
                             name=f"Final Delivery Summary (run {run.run_number})", content="\n".join(lines),
-                            artifact_type="markdown", summary="Automatic delivery summary.", category="summary")
+                            artifact_type="markdown", summary="Automatic delivery summary.", category="summary",
+                            extra_inputs=inputs)
 
 
 def _new_task(db: Session, run: ProjectRun, agent: ProjectAgent, kind: str, title: str, objective: str,
@@ -303,10 +317,39 @@ def _new_task(db: Session, run: ProjectRun, agent: ProjectAgent, kind: str, titl
 # ---------------------------------------------------------------------------
 # Finalize / halt
 # ---------------------------------------------------------------------------
-def finalize(run_id: uuid.UUID) -> None:
+def _stale_gate(db: Session, run: ProjectRun, project: Project, stage: str = "final") -> bool:
+    """Deterministic delivery gate: block while any deliverable is stale (from lineage).
+    Returns True when the run must wait for the client."""
+    from .. import traceability
+
+    blockers = traceability.delivery_blockers(db, project.id, run.id, stage)
+    if not blockers:
+        return False
+    if not db.scalar(select(ApprovalRequest).where(ApprovalRequest.run_id == run.id, ApprovalRequest.kind == "stale_artifacts",
+                                                   ApprovalRequest.status == "pending")):
+        services.create_approval(
+            db, project_id=project.id, run_id=run.id, kind="stale_artifacts",
+            title=f"Delivery blocked: {len(blockers)} deliverable(s) are not current",
+            explanation=("These deliverables were derived from requirements that have since been replaced (or their lineage "
+                         "cannot be verified), so they cannot be delivered as current:\n"
+                         + "\n".join(f"- {b['name']} v{b['version']}: {b['reason']}" for b in blockers)
+                         + "\n\nRework them (targeted tasks for the producing agents) or, if you have checked them, "
+                           "confirm they are current."),
+            payload={"artifacts": blockers, "options": ["rework", "confirm", "cancel"]},
+            artifact_ids=[uuid.UUID(b["artifact_id"]) for b in blockers])
+    events.emit(db, project.id, "delivery_blocked", f"Delivery blocked: {len(blockers)} stale deliverable(s)", run_id=run.id,
+                data={"artifacts": [b["name"] for b in blockers]})
+    return True
+
+
+def finalize(run_id: uuid.UUID) -> bool:
+    """Returns False if the delivery gate blocked completion."""
     with SessionLocal() as db:
         run = db.get(ProjectRun, run_id)
         project = db.get(Project, run.project_id)
+        if _stale_gate(db, run, project):
+            db.commit()
+            return False
         tasks = services.run_tasks(db, run.id)
         findings = list(db.scalars(select(ReviewFinding).where(ReviewFinding.run_id == run.id)))
         # "info" findings are reviewer observations, not defects; they are reported separately.
@@ -334,6 +377,7 @@ def finalize(run_id: uuid.UUID) -> None:
                     f"Run {run.run_number} finished: {len([t for t in tasks if t.status == 'completed'])} tasks completed, "
                     f"{len(unresolved)} unresolved finding(s). Awaiting client acceptance.", run_id=run.id)
         db.commit()
+        return True
 
 
 def halt(run_id: uuid.UUID) -> None:

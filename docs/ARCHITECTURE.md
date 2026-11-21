@@ -39,6 +39,7 @@ plus the task table) and **one event system** (`agent_events`, streamed over SSE
 | `orchestration/decisions.py` | approvals and client interventions |
 | `orchestration/context.py` | task-scoped context: requirements, decisions, dependency outputs, agent memory |
 | `requirements.py` | requirement items: brief splitting, stable refs (R-001…), supersession, impact proposal |
+| `traceability.py` | task↔requirement links, artifact-version lineage, deterministic freshness, impact analysis, delivery gate |
 | `tools/` | permission-checked tools, Docker sandbox, file ingestion |
 | `worker.py` | durable worker: leases, heartbeats, restart recovery |
 | `api/routes.py` | HTTP API |
@@ -87,6 +88,17 @@ A client **change request**:
 Agents never see the raw brief. They get active items, plus an explicit "NO LONGER VALID" list naming
 what replaced each retired item. Editing the brief never resurrects a retired rule. The same card selects
 completed and in-flight tasks for targeted rework.
+
+### Traceability and stale-artifact protection
+
+- **Plan tasks cite the R-ids they implement** (validated). Every artifact version snapshots the
+  requirements it implements and the exact input versions it derives from.
+- **Impact of a change:** when a requirement is superseded, impact is computed from those links plus task
+  dependencies and recorded consumption. It is never a blanket list.
+- **Freshness is deterministic.** A version is stale if it implements a superseded requirement, derives
+  from a stale input, or has no links and predates the change; a client may confirm a version as current.
+- **Delivery gate:** a stage-aware gate blocks QA, consolidation and finalization while any deliverable is
+  stale. See [CHANGE_MANAGEMENT_VALIDATION.md](CHANGE_MANAGEMENT_VALIDATION.md).
 
 ### Safeguards
 

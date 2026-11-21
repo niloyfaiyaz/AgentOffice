@@ -123,6 +123,9 @@ async def _run(db: Session, task_id: uuid.UUID) -> str:
                                   provider=agent.provider, model_id=agent.model_id, status="running",
                                   conversation=[{"role": "user", "content": [
                                       {"type": "text", "text": task_message(db, project, run, task, agent)}]}])
+        from .. import traceability
+
+        execution.input_version_ids = traceability.context_inputs(db, task)  # lineage of the context it saw
         db.add(execution)
     transition_task(task, "running")
     task.started_at = task.started_at or utcnow()

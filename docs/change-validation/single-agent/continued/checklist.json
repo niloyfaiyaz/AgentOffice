@@ -1,0 +1,111 @@
+{
+  "documents_checked": {
+    "csv-import-assistant-spec.md": "v2",
+    "Final Delivery Summary (run 1)": "v1",
+    "Final Delivery Summary (run 2)": "v1"
+  },
+  "passed": 14,
+  "total": 16,
+  "results": {
+    "CSV upload requirements": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant-spec.md"
+      ]
+    },
+    "Record preview behavior": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant-spec.md"
+      ]
+    },
+    "Duplicate handling": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant-spec.md"
+      ]
+    },
+    "Row-specific error messaging": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant-spec.md"
+      ]
+    },
+    "Import confirmation behavior": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant-spec.md"
+      ]
+    },
+    "Import summary behavior": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant-spec.md",
+        "Final Delivery Summary (run 1)",
+        "Final Delivery Summary (run 2)"
+      ]
+    },
+    "Updated email-or-phone validation": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant-spec.md",
+        "Final Delivery Summary (run 2)"
+      ]
+    },
+    "Rejection only when both contact methods absent/invalid": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant-spec.md",
+        "Final Delivery Summary (run 2)"
+      ]
+    },
+    "User stories present": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant-spec.md"
+      ]
+    },
+    "Acceptance criteria (given/when/then or criteria lists)": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant-spec.md",
+        "Final Delivery Summary (run 1)",
+        "Final Delivery Summary (run 2)"
+      ]
+    },
+    "Valid and invalid record coverage": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant-spec.md"
+      ]
+    },
+    "Technical assumptions": {
+      "pass": true,
+      "found_in": [
+        "csv-import-assistant-spec.md",
+        "Final Delivery Summary (run 1)"
+      ]
+    },
+    "Open questions": {
+      "pass": false,
+      "found_in": []
+    },
+    "Traceable QA findings (QA-authored report; every finding cited)": {
+      "pass": false,
+      "qa_reports": [],
+      "qa_authored": [],
+      "findings": [],
+      "missing": []
+    },
+    "No deliverable claims email is always mandatory": {
+      "pass": true,
+      "violations": []
+    },
+    "Original email-mandatory rule superseded in the requirement record": {
+      "pass": true,
+      "items": [
+        "R-009 superseded -> R-019: Every imported customer contact must have a valid email address."
+      ]
+    }
+  }
+}

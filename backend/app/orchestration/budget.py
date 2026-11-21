@@ -60,8 +60,11 @@ def check(db: Session, *, project: Project, run: ProjectRun, agent: ProjectAgent
     spent = services.project_spend(db, project.id)
     inflight = reserved(run.id)
     if policy.budget_usd is not None and spent + inflight + estimate > policy.budget_usd:
-        return BudgetBlock("project_budget", f"Estimated spend ${spent + inflight:.4f} + next call up to ${estimate:.4f} "
-                                             f"would exceed the project budget of ${policy.budget_usd:.2f}.")
+        return BudgetBlock("project_budget",
+                           f"Spent so far (estimated): ${spent:.4f}. Reserved for calls already in progress: ${inflight:.4f}. "
+                           f"The next call could cost up to ${estimate:.4f} (worst case: its full output allowance), which "
+                           f"would exceed the project budget of ${policy.budget_usd:.2f}. Reservations are released when "
+                           f"calls finish; actual spend is usually well below the worst case.")
     if agent.spend_limit_usd is not None:
         a_spent = services.agent_spend(db, agent.id)
         if a_spent + estimate > agent.spend_limit_usd:

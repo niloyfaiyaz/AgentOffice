@@ -324,6 +324,7 @@ class TaskExecution(TimestampMixin, Base):
     pending: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
     model_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     nudges: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    input_version_ids: Mapped[list[Any]] = mapped_column(JSONType, nullable=False, default=list)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     error: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -423,6 +424,10 @@ class Artifact(TimestampMixin, Base):
     current_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     acceptance_status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending")
     stale: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # "[lineage] ..." when computed from requirement/input lineage; "[note] ..." when set by a client action.
+    stale_reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # The client explicitly confirmed this version as current despite lineage uncertainty.
+    confirmed_version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 
 class ArtifactVersion(Base):
@@ -437,7 +442,26 @@ class ArtifactVersion(Base):
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     created_by_task_id: Mapped[Optional[uuid.UUID]] = fk("tasks.id", nullable=True, ondelete="SET NULL")
     created_by_agent_id: Mapped[Optional[uuid.UUID]] = fk("project_agents.id", nullable=True, ondelete="SET NULL")
+    # Lineage snapshot taken at write time (immutable): the requirement items the producing task
+    # implemented, and the exact artifact versions it was derived from.
+    requirement_ids: Mapped[list[Any]] = mapped_column(JSONType, nullable=False, default=list)
+    input_version_ids: Mapped[list[Any]] = mapped_column(JSONType, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class TaskRequirement(Base):
+    """Which requirement items a task implements. Links are deactivated, never deleted, so the
+    historical association survives requirement changes."""
+
+    __tablename__ = "task_requirements"
+    __table_args__ = (UniqueConstraint("task_id", "requirement_id", name="uq_task_requirement"),)
+    id: Mapped[uuid.UUID] = uuid_pk()
+    task_id: Mapped[uuid.UUID] = fk("tasks.id")
+    requirement_id: Mapped[uuid.UUID] = fk("project_requirements.id")
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="plan")  # plan|inherited|change|qa
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    deactivated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ReviewFinding(TimestampMixin, Base):

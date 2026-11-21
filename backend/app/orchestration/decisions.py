@@ -98,7 +98,7 @@ def decide(db: Session, ap: ApprovalRequest, decision: str, body: dict[str, Any]
     handler = {
         "sow": _sow, "clarification": _clarification, "tool_authorization": _tool_auth, "budget": _budget,
         "task_failure": _task_failure, "requirement_change": _requirement_change, "scope_change": _scope_change,
-        "deliverable_acceptance": _acceptance,
+        "deliverable_acceptance": _acceptance, "stale_artifacts": _stale_artifacts,
     }.get(ap.kind)
     if handler is None:
         raise DecisionError(f"Unknown approval kind {ap.kind}")
@@ -249,8 +249,18 @@ def _task_failure(db, project, run, ap, decision, body, comment):
 def _requirement_change(db, project, run, ap, decision, body, comment):
     from .. import requirements
 
+    change_ref = ap.payload.get("change_ref")
+    if change_ref:
+        # The blanket "predates this change" notes were provisional; once the client decides the change,
+        # precise lineage (recomputed below) is authoritative.
+        for a in db.scalars(select(Artifact).where(Artifact.project_id == project.id,
+                                                   Artifact.stale_reason == f"[note] predates requirement change {change_ref}; request a revision")):
+            a.stale, a.stale_reason = False, ""
     if decision != "approve":
         ap.status = "rejected"
+        from .. import traceability
+
+        traceability.refresh(db, project.id)
         return
     ap.status = "approved"
     change_id = ap.payload.get("change_requirement_id")
@@ -261,16 +271,91 @@ def _requirement_change(db, project, run, ap, decision, body, comment):
     if change is not None and sup:
         done = requirements.supersede(db, project.id, list(sup), change, run_id=run.id if run else None)
         ap.payload = {**ap.payload, "superseded_refs": [r.ref for r in done]}
-    ids = body.get("task_ids") or []
+    from .. import traceability
+
+    superseded_ids = {uuid.UUID(c) for c in ap.payload.get("superseded_ids", [])}
+    if change is not None and sup:
+        superseded_ids |= {r.id for r in db.scalars(select(ProjectRequirement).where(
+            ProjectRequirement.superseded_by_id == change.id))}
+    ap.payload = {**ap.payload, "superseded_ids": sorted(str(i) for i in superseded_ids)}
     if run is None or run.status in RUN_TERMINAL:
+        traceability.refresh(db, project.id)  # delivered documents derived from retired rules become stale
         return
-    note = f"Update for the requirement change: {ap.payload.get('change', '')}"
-    for tid in ids:
-        t = db.get(Task, uuid.UUID(str(tid)))
+    imp = traceability.impact(db, run.id, superseded_ids) if superseded_ids else {"tasks": []}
+    selected = {str(t) for t in (body.get("task_ids") or [])}
+    note = f"Update for the requirement change {change.ref + ': ' if change else ''}{ap.payload.get('change', '')}"
+    applied = {"reworked": [], "relinked": [], "waiting": [], "preserved": [], "not_reworked": []}
+    reworks: dict[str, Task] = {}
+    for e in imp["tasks"]:
+        t = db.get(Task, uuid.UUID(e["id"]))
+        if e["action"] in ("relink", "relink_wait") and change is not None:
+            traceability.relink_superseded(db, t, superseded_ids, change)  # not started: uses the new baseline
+            applied["relinked"].append(t.title)
+        elif e["action"] == "preserve":
+            applied["preserved"].append(t.title)
+    for tid in selected:
+        t = db.get(Task, uuid.UUID(tid))
         if t is None or t.run_id != run.id or t.status in ("cancelled", "skipped", "failed"):
             continue
         # In-flight tasks finish first (they started with the old requirement), then get reworked.
-        create_rework(db, run, t, note, after_original=t.status != "completed")
+        reworks[tid] = create_rework(db, run, t, note, after_original=t.status != "completed",
+                                     change=change, superseded=superseded_ids)
+        applied["reworked"].append(t.title)
+    for e in imp["tasks"]:
+        if e["action"] in ("rework", "rework_after") and e["id"] not in selected:
+            applied["not_reworked"].append(e["title"])  # its outputs stay stale; the delivery gate will ask again
+        # Ordering: a not-started task, or a rework, never runs before the rework of its upstream work,
+        # so it cannot consume a stale input.
+        waiter = None
+        if e["action"] in ("wait", "relink_wait"):
+            waiter = db.get(Task, uuid.UUID(e["id"]))
+        elif e["id"] in reworks:
+            waiter = reworks[e["id"]]
+        if waiter is not None:
+            for up in e["upstream"]:
+                rw = reworks.get(up)
+                if rw is not None and rw.id != waiter.id:
+                    db.add(TaskDependency(task_id=waiter.id, depends_on_task_id=rw.id))
+                    if waiter.status == "ready":
+                        transition_task(waiter, "pending")
+                    applied["waiting"].append(waiter.title)
+    db.flush()
+    traceability.refresh(db, project.id)
+    ap.payload = {**ap.payload, "applied": applied}
+    wake(db, run)
+
+
+def _stale_artifacts(db, project, run, ap, decision, body, comment):
+    """Remediate a blocked delivery: targeted rework, explicit client confirmation, or cancel."""
+    from .. import traceability
+
+    option = str(body.get("option") or ("rework" if decision == "approve" else "cancel"))
+    if option == "cancel" or decision == "reject":
+        ap.status = "rejected"
+        request_control(db, run, "cancel")
+        return
+    chosen = {str(a) for a in (body.get("artifact_ids") or [b["artifact_id"] for b in ap.payload.get("artifacts", [])])}
+    if option == "confirm":
+        for b in ap.payload.get("artifacts", []):
+            if b["artifact_id"] in chosen:
+                a = db.get(Artifact, uuid.UUID(b["artifact_id"]))
+                if a is not None:
+                    a.confirmed_version = a.current_version
+                    events.emit(db, project.id, "artifact_confirmed_current",
+                                f"Client confirmed “{a.name}” v{a.current_version} as current", run_id=run.id)
+    elif option == "rework":
+        sup = {r.id for r in db.scalars(select(ProjectRequirement).where(ProjectRequirement.project_id == project.id,
+                                                                         ProjectRequirement.superseded_by_id.is_not(None)))}
+        for b in ap.payload.get("artifacts", []):
+            if b["artifact_id"] in chosen and b.get("producing_task_id"):
+                t = db.get(Task, uuid.UUID(b["producing_task_id"]))
+                if t is not None and t.assigned_agent_id:
+                    create_rework(db, run, t, f"Bring “{b['name']}” up to date with the current requirements ({b['reason']}).",
+                                  superseded=sup)
+    else:
+        raise DecisionError("option must be rework, confirm or cancel")
+    ap.status = "approved"
+    traceability.refresh(db, project.id)
     wake(db, run)
 
 
@@ -338,7 +423,8 @@ def request_control(db: Session, run: ProjectRun, action: str) -> None:
     sync_project_status(project, run)
 
 
-def create_rework(db: Session, run: ProjectRun, original: Task, note: str, after_original: bool = False) -> Task:
+def create_rework(db: Session, run: ProjectRun, original: Task, note: str, after_original: bool = False,
+                  change: Optional[ProjectRequirement] = None, superseded: Optional[set] = None) -> Task:
     key = "fb:" + hashlib.sha256(f"{original.id}|{note}".encode()).hexdigest()[:40]
     existing = db.scalar(select(Task).where(Task.run_id == run.id, Task.idempotency_key == key))
     if existing:
@@ -354,10 +440,20 @@ def create_rework(db: Session, run: ProjectRun, original: Task, note: str, after
     if after_original:
         db.flush()
         db.add(TaskDependency(task_id=t.id, depends_on_task_id=original.id))
+    db.flush()
+    # Traceability: the rework implements the original's requirements, mapped to their current versions.
+    from .. import traceability
+
+    orig_ids = [l.requirement_id for l in traceability.links(db, original.id, active_only=False)
+                if l.active or (superseded and l.requirement_id in superseded)]
+    req_ids = set(traceability.current_requirement_ids(db, orig_ids))
+    if change is not None and (not orig_ids or (superseded and set(orig_ids) & superseded)):
+        req_ids.add(change.id)
+    traceability.link(db, t, req_ids, "inherited")
     for aid in original.output_artifact_ids:
         a = db.get(Artifact, uuid.UUID(aid))
-        if a:
-            a.stale = True
+        if a and not a.stale:
+            a.stale, a.stale_reason = True, f"[note] rework requested: {note[:300]}"
     db.flush()
     events.emit(db, run.project_id, "task_assigned", f"{agent.display_name} was asked to rework “{original.title}”",
                 run_id=run.id, agent_id=agent.id, task_id=t.id, agent_status="assigned", data={"feedback": note[:500]})

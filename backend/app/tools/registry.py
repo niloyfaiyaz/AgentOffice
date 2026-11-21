@@ -136,7 +136,11 @@ async def h_read_artifact(ctx: ToolContext, args, call_id) -> ToolOutput:
     v = ctx.db.scalar(q.where(ArtifactVersion.version == int(ver))) if ver else services.latest_version(ctx.db, a.id)
     if v is None:
         return ToolOutput("Version not found", is_error=True)
-    return ToolOutput(f"[{a.name} v{v.version}, type={a.artifact_type}]\n{_clip(v.content, 60000)}")
+    from .. import traceability
+
+    traceability.record_input(ctx.execution, [v.id])  # lineage: this task consumed this exact version
+    stale = f" — STALE: {a.stale_reason.replace(traceability.LINEAGE, '')}" if a.stale and a.stale_reason else ""
+    return ToolOutput(f"[{a.name} v{v.version}, type={a.artifact_type}{stale}]\n{_clip(v.content, 60000)}")
 
 
 async def h_write_artifact(ctx: ToolContext, args, call_id) -> ToolOutput:
@@ -161,7 +165,7 @@ async def h_write_artifact(ctx: ToolContext, args, call_id) -> ToolOutput:
             ctx.db, project_id=ctx.project.id, run_id=ctx.run.id, task_id=ctx.task.id, agent_id=ctx.agent.id,
             name=str(args.get("name", "")), content=str(args.get("content", "")),
             artifact_type=str(args.get("artifact_type", "markdown")), summary=str(args.get("summary", "")),
-            source_refs=[str(s) for s in (args.get("source_refs") or [])][:50],
+            source_refs=[str(s) for s in (args.get("source_refs") or [])][:50], execution=ctx.execution,
         )
     except services.DomainError as e:
         return ToolOutput(str(e), is_error=True)
@@ -352,6 +356,9 @@ async def h_delegate(ctx: ToolContext, args, call_id) -> Union[ToolOutput, Suspe
     )
     db.add(sub)
     db.flush()
+    from .. import traceability
+
+    traceability.inherit(db, sub, ctx.task)
     db.add(TaskDependency(task_id=ctx.task.id, depends_on_task_id=sub.id))
     ho = AgentHandoff(project_id=ctx.project.id, run_id=ctx.run.id, from_agent_id=ctx.agent.id, to_agent_id=target.id,
                       source_task_id=ctx.task.id, created_task_id=sub.id, kind="delegation",
@@ -462,9 +469,11 @@ def _write_qa_report(ctx: ToolContext, verdict: str, summary: str) -> None:
         lines.append("| — | — | — | — | — | No findings recorded | — |")
     lines += ["", "_This report is generated from the findings the QA Reviewer recorded. A QA pass is a review "
               "opinion, not proof of correctness._"]
+    reviewed_versions = [str(v.id) for v in (services.latest_version(db, a.id) for a in reviewed) if v is not None]
     services.write_artifact(db, project_id=ctx.project.id, run_id=ctx.run.id, task_id=ctx.task.id, agent_id=ctx.agent.id,
                             name=f"QA Review Report (run {ctx.run.run_number})", content="\n".join(lines),
-                            artifact_type="markdown", summary=f"QA verdict {verdict}; {len(findings)} finding(s).")
+                            artifact_type="markdown", summary=f"QA verdict {verdict}; {len(findings)} finding(s).",
+                            execution=ctx.execution, extra_inputs=reviewed_versions)
 
 
 _QA_REPORT = re.compile(r"\bqa\b.*\b(report|review)\b|quality assurance.*report|review report", re.I)

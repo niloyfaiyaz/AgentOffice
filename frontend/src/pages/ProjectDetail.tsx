@@ -198,6 +198,8 @@ function TaskCard({ t, agents, tasks }: { t: Task; agents: Agent[]; tasks: Task[
         <div className="mt-2 space-y-1 border-t border-line pt-2 text-xs">
           <p>{t.objective}</p>
           {deps.length > 0 && <p><span className="font-medium">Depends on:</span> {deps.join(", ")}</p>}
+          {!!t.requirement_refs?.length && <p><span className="font-medium">Implements:</span> {t.requirement_refs.join(", ")}
+            {!!t.former_requirement_refs?.length && <span className="text-muted"> (formerly {t.former_requirement_refs.join(", ")})</span>}</p>}
           <p className="font-medium">Acceptance criteria</p>
           <ul className="list-disc pl-4">{t.acceptance_criteria.map((c, i) => <li key={i}>{c}</li>)}</ul>
           {t.result_summary && <p><span className="font-medium">Handoff:</span> {t.result_summary}</p>}

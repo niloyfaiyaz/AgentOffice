@@ -85,9 +85,17 @@ def task(db: Session, t: Task) -> dict:
             "depth": t.depth, "retry_count": t.retry_count, "max_retries": t.max_retries,
             "output_artifact_ids": t.output_artifact_ids, "result_summary": t.result_summary, "error": t.error,
             "depends_on": deps, "context_notes": t.context_notes, "sort_order": t.sort_order,
+            "requirement_refs": _task_refs(db, t.id, True), "former_requirement_refs": _task_refs(db, t.id, False),
             "estimated_spend_usd": float(services.task_spend(db, t.id)),
             "started_at": t.started_at.isoformat() if t.started_at else None,
             "completed_at": t.completed_at.isoformat() if t.completed_at else None}
+
+
+def _task_refs(db: Session, task_id, active: bool) -> list[str]:
+    from .. import traceability
+
+    rows = [l for l in traceability.links(db, task_id, active_only=False) if l.active == active]
+    return traceability.refs(db, [l.requirement_id for l in rows])
 
 
 def approval(a: ApprovalRequest) -> dict:
@@ -102,6 +110,8 @@ def artifact(db: Session, a: Artifact, content: bool = False) -> dict:
     out = {"id": s(a.id), "project_id": s(a.project_id), "run_id": s(a.run_id), "task_id": s(a.task_id),
            "owner_agent_id": s(a.owner_agent_id), "name": a.name, "artifact_type": a.artifact_type, "category": a.category,
            "current_version": a.current_version, "acceptance_status": a.acceptance_status, "stale": a.stale,
+           "stale_reason": a.stale_reason.replace("[lineage] ", "").replace("[note] ", ""),
+           "confirmed_version": a.confirmed_version,
            "summary": v.summary if v else "", "size": len(v.content) if v else 0,
            "updated_at": a.updated_at.isoformat()}
     if content and v:

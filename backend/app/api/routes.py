@@ -1084,15 +1084,46 @@ async def post_message(pid: str, body: MessageIn, db: Session = Depends(get_db))
             db.flush()
             # 1) Which existing requirement items does the change replace? (PM proposal; client confirms)
             proposal = await requirements.propose_supersession(db, p, change)
-            # 2) Which work is affected: completed AND in-flight tasks (unstarted tasks pick it up automatically).
-            impacted = [t for t in (services.run_tasks(db, run.id) if active else [])
-                        if t.kind in ("work", "subtask", "rework")
-                        and t.status in ("completed", "running", "waiting_approval", "waiting_subtask", "paused")]
+            # 2) Evidence-based impact from task-requirement links and artifact lineage, per candidate,
+            #    so the card's defaults follow the client's supersession choice.
+            from .. import traceability
+
+            cand_ids = [c["id"] for c in proposal["candidates"]]
+            proposed_ids = [c["id"] for c in proposal["candidates"] if c["proposed"]]
+            impacted, impact_by_candidate = [], {}
+            if active:
+                every = traceability.impact(db, run.id, cand_ids)
+                chosen = {e["id"]: e for e in traceability.impact(db, run.id, proposed_ids)["tasks"]}
+                for c in cand_ids:
+                    impact_by_candidate[c] = [e["id"] for e in traceability.impact(db, run.id, [c])["tasks"]
+                                              if e["action"] in ("rework", "rework_after")]
+                # Listed: work affected under the PROPOSED supersession, then work affected only if the client
+                # also replaces another candidate (so the card can follow their choice).
+                impacted = [e for e in chosen.values() if e["impact"] != "unaffected"]
+                cand_ref = {c["id"]: c["ref"] for c in proposal["candidates"]}
+                for e in every["tasks"]:
+                    if e["id"] not in chosen or chosen[e["id"]]["impact"] == "unaffected":
+                        if e["impact"] in ("direct", "downstream"):
+                            via = [cand_ref.get(c) for c, ids in impact_by_candidate.items() if e["id"] in ids]
+                            impacted.append({**e, "impact": "if_selected", "action": "if_selected",
+                                             "reason": f"only if you also replace {', '.join(r for r in via if r)}"})
+                listed = {e["id"] for e in impacted}
+                preserved = [e["title"] for e in chosen.values() if e["impact"] == "unaffected" and e["id"] not in listed]
+                if not proposed_ids:
+                    # Nothing is replaced: the change ADDS a rule. Lineage cannot say which finished work should
+                    # incorporate it, so every completed/in-flight work task is surfaced as uncertain - never omitted.
+                    impacted = [{**e, "impact": "uncertain", "action": "confirm",
+                                 "reason": "the change adds a requirement that replaces nothing; select tasks that should incorporate it"}
+                                for e in every["tasks"] if e["status"] == "completed" or e["status"] in traceability.IN_FLIGHT]
+                    preserved = []
+            else:
+                preserved = []
+            at_risk = traceability.artifacts_at_risk(db, p.id, proposed_ids)
             stale_docs = []
             if run is not None and run.status in RUN_TERMINAL:
                 stale_docs = [a for a in services.project_artifacts(db, p.id, include_working=False) if a.category != "plan"]
                 for a in stale_docs:
-                    a.stale = True
+                    a.stale, a.stale_reason = True, f"[note] predates requirement change {change.ref}; request a revision"
             proposed_refs = [c["ref"] for c in proposal["candidates"] if c["proposed"]]
             if proposal["candidates"] or impacted:
                 services.create_approval(
@@ -1103,21 +1134,32 @@ async def post_message(pid: str, body: MessageIn, db: Session = Depends(get_db))
                                 "follow the change automatically; in-progress tasks are reworked after they finish.",
                     payload={"change": body.content, "change_requirement_id": str(change.id), "change_ref": change.ref,
                              "candidates": proposal["candidates"], "proposal_method": proposal["method"],
-                             "proposal_rationale": proposal["rationale"],
-                             "tasks": [{"id": str(t.id), "title": t.title, "status": t.status} for t in impacted]})
+                             "proposal_rationale": proposal["rationale"], "tasks": impacted,
+                             "impact_by_candidate": impact_by_candidate, "preserved_tasks": preserved,
+                             "artifacts_at_risk": at_risk})
             parts = [f"Recorded the change as {change.ref}."]
             if proposed_refs:
                 who = "I" if proposal["method"] == "project_manager" else "A keyword check"
                 parts.append(f"{who} propose{'s' if who != 'I' else ''} that it replaces {', '.join(proposed_refs)} — please confirm.")
             elif proposal["candidates"]:
                 parts.append("I found no existing requirement it clearly replaces — please check the list.")
-            if impacted:
-                parts.append("I've listed the completed and in-progress tasks it may affect — choose which to rework.")
+            n_rework = sum(1 for e in impacted if e["action"] in ("rework", "rework_after"))
+            n_unc = sum(1 for e in impacted if e["impact"] == "uncertain")
+            additive = active and not proposed_ids
+            if n_rework:
+                parts.append(f"Based on task-requirement links and artifact lineage, {n_rework} task(s) need rework"
+                             f"{f' and {len(at_risk)} deliverable(s) would become stale' if at_risk else ''}; "
+                             f"{len(preserved)} completed or planned task(s) are unaffected and will be kept.")
+            if n_unc and additive:
+                parts.append(f"It doesn't replace an existing requirement, so lineage can't show which finished work must "
+                             f"incorporate it: I've listed {n_unc} completed or in-progress task(s) — choose any to rework.")
+            elif n_unc:
+                parts.append(f"{n_unc} task(s) have no requirement links, so I can't tell if they're affected — please confirm.")
             if stale_docs:
                 parts.append(f"The run has already finished, so the {len(stale_docs)} delivered document(s) predate the change "
                              "and are marked stale; request a revision to update them.")
-            elif not impacted:
-                parts.append("Upcoming work will follow it.")
+            elif not n_rework and not n_unc:
+                parts.append("No completed or in-progress work depends on the replaced requirements; upcoming work will follow the change.")
             reply = " ".join(parts)
         elif body.intent == "task_feedback":
             if not body.task_id:
@@ -1190,7 +1232,22 @@ def get_artifact(aid: str, version: Optional[int] = None, db: Session = Depends(
     a = _get(db, Artifact, aid)
     out = ser.artifact(db, a, content=True)
     vs = list(db.scalars(select(ArtifactVersion).where(ArtifactVersion.artifact_id == a.id).order_by(ArtifactVersion.version)))
+    from .. import traceability
+
+    def _inputs(v):
+        res = []
+        for iid in v.input_version_ids or []:
+            try:
+                iv = db.get(ArtifactVersion, uuid.UUID(str(iid)))
+            except ValueError:
+                iv = None
+            if iv is not None and iv.artifact_id != v.artifact_id:
+                ia = db.get(Artifact, iv.artifact_id)
+                res.append(f"{ia.name if ia else '?'} v{iv.version}")
+        return res
+
     out["versions"] = [{"version": v.version, "summary": v.summary, "created_at": v.created_at.isoformat(),
+                        "requirement_refs": traceability.refs(db, v.requirement_ids or []), "inputs": _inputs(v),
                         "created_by_agent_id": str(v.created_by_agent_id) if v.created_by_agent_id else None,
                         "created_by_task_id": str(v.created_by_task_id) if v.created_by_task_id else None,
                         "sha256": v.sha256} for v in vs]

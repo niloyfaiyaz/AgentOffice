@@ -18,6 +18,10 @@ const BUDGET = process.env.BUDGET ?? "2";
 const MAX_CALLS = process.env.MAX_CALLS ?? "60";
 const OUT = path.resolve(process.env.OUT ?? "../docs/acceptance");
 const DEADLINE_MS = Number(process.env.DEADLINE_MS ?? 25 * 60_000);
+const TEAM = process.env.TEAM ?? "multi"; // multi | single
+const EMAIL_RULE = process.env.EMAIL_RULE ?? "Every contact must have a valid email address. Rows with missing or invalid email addresses must be rejected.";
+const RESUME_PID = process.env.RESUME_PID ?? "";   // continue an existing project instead of creating one
+const REVISION_TEXT = process.env.REVISION_TEXT ?? ""; // request a revision run on the acceptance card
 const SHOTS = path.join(OUT, "screens");
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -64,18 +68,19 @@ The CSV import feature must:
 6. Allow administrators to confirm valid records before import.
 7. Provide an import summary.
 
-Every contact must have a valid email address. Rows with missing or invalid email addresses must be rejected.`;
+${EMAIL_RULE}`;
 const DELIVERABLES = ["Concise Product Requirements Document", "Prioritized user stories", "Testable acceptance criteria",
   "Technical feasibility and risk assessment", "QA review report", "Final consolidated project deliverable"].join("\n");
 const CONSTRAINTS = "Out of scope: production database integration, real customer information, authentication, external SaaS integrations, deployment, a complete CRM. Keep each document concise (under ~900 words).";
 const SUCCESS = "An engineering team could build and test the CSV import workflow from these documents without further clarification.";
-const CR = "Update the CSV validation requirements. A customer contact may now be imported without an email address if a valid phone number is provided. Reject a row only if both contact methods are absent or invalid. Update the affected requirements, user stories, acceptance criteria, and QA tests.";
+const CR = process.env.CR_TEXT ?? "Update the CSV validation requirements. A customer contact may now be imported without an email address if a valid phone number is provided. Reject a row only if both contact methods are absent or invalid. Update the affected requirements, user stories, acceptance criteria, and QA tests.";
 
 const browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined });
 const page = await browser.newPage({ viewport: { width: 1366, height: 900 }, acceptDownloads: true });
 const consoleErrors = [];
 page.on("console", (m) => m.type() === "error" && consoleErrors.push(m.text()));
-const evidence = { config: { BASE, PROVIDER, MODEL, PM_MODEL, BUDGET, MAX_CALLS }, log, qa: [], cr: {}, refresh: [] };
+const evidence = { config: { BASE, PROVIDER, MODEL, PM_MODEL, BUDGET, MAX_CALLS, TEAM, EMAIL_RULE, CR }, log, qa: [], cr: {}, refresh: [],
+  timing: {}, interventions: [], screens: {} };
 let pid = null;
 
 try {
@@ -98,6 +103,15 @@ try {
     }
   }
 
+  let team, bea;
+  if (RESUME_PID) {
+    pid = RESUME_PID;
+    evidence.project_id = pid;
+    team = await api(`/projects/${pid}/agents`);
+    evidence.team = team.map((a) => ({ name: a.display_name, role: a.role, model: `${a.provider}/${a.model_id}` }));
+    evidence.timing.start = Date.now();
+    note("resuming existing project", true, pid);
+  } else {
   // 3-4. Create project via wizard
   await page.goto(`${BASE}/projects/new`);
   await page.getByRole("button", { name: /Product Requirements/ }).click();
@@ -113,7 +127,7 @@ try {
   note("3-4 project created with requirements, exclusions and $" + BUDGET + " budget", true);
 
   // 5. Assemble team from recommendations
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < (TEAM === "single" ? 1 : 4); i++) {
     await page.getByRole("button", { name: "Hire", exact: true }).first().click();
     await page.getByText(`Hired team (${i + 1})`).waitFor();
   }
@@ -134,15 +148,18 @@ try {
     await dlg.waitFor({ state: "detached" });
   };
   await configure("Pat", PM_MODEL);
-  await configure("Bea", MODEL, "Business Analyst");
-  await configure("Archie", MODEL, "Technical Reviewer");
-  await configure("Quinn", MODEL);
-  const team = await api(`/projects/${pid}/agents`);
+  if (TEAM !== "single") {
+    await configure("Bea", MODEL, "Business Analyst");
+    await configure("Archie", MODEL, "Technical Reviewer");
+    await configure("Quinn", MODEL);
+  }
+  team = await api(`/projects/${pid}/agents`);
   evidence.team = team.map((a) => ({ name: a.display_name, role: a.role, model: `${a.provider}/${a.model_id}`, orchestrator: a.is_orchestrator, tools: a.tools }));
-  const okTeam = team.length === 4 && team.every((a) => a.provider === PROVIDER) && team.some((a) => a.role === "Technical Reviewer");
-  note("5-6 team assembled: PM, Business Analyst, Technical Reviewer, QA with models", okTeam,
+  const okTeam = TEAM === "single" ? team.length === 1 && team[0].provider === PROVIDER
+    : team.length === 4 && team.every((a) => a.provider === PROVIDER) && team.some((a) => a.role === "Technical Reviewer");
+  note(`5-6 team assembled (${TEAM})`, okTeam,
     evidence.team.map((a) => `${a.name}=${a.role} [${a.model}]`).join("; "));
-  evidence.screens = { team: await shot(page, "team") };
+  evidence.screens.team = await shot(page, "team");
 
   // Budget controls through the UI (call cap enforced before every model call)
   await page.getByRole("tab", { name: "Budget & limits" }).click();
@@ -156,6 +173,7 @@ try {
 
   // 7. Generate statement of work
   await page.getByRole("tab", { name: /Overview/ }).click();
+  evidence.timing.start = Date.now();
   await page.getByRole("button", { name: "Ask the PM for a plan" }).click();
   await page.getByRole("button", { name: "Approve and start" }).waitFor({ timeout: 300_000 });
   const st0 = await api(`/projects/${pid}/state`);
@@ -172,14 +190,19 @@ try {
     evidence.qa.push({ stage: "plan", q, a });
   }
   const qaBox = page.getByRole("checkbox", { name: /Independent QA review/ });
-  if (!(await qaBox.isChecked())) await qaBox.check();
+  if (await qaBox.isEnabled() && !(await qaBox.isChecked())) await qaBox.check();
+  evidence.interventions.push("approve statement of work");
+  evidence.timing.plan_ready = Date.now();
   await page.getByRole("button", { name: "Approve and start" }).click();
   await page.getByText("Nothing needs you right now.").or(page.getByText("The team is working.")).first().waitFor({ timeout: 60_000 });
   note("8 SOW approved through the approval interface (QA review on)", true);
+  }
 
   // 9-12. Execute; act as the client when needed; introduce CR-001 after the BA's first draft
-  const bea = team.find((a) => a.display_name === "Bea");
-  let crSent = false;
+  bea = team.find((a) => a.display_name === "Bea");
+  let crSent = !!RESUME_PID;
+  let revisionDone = !REVISION_TEXT;
+  const startRun = (await api(`/projects/${pid}/state`)).current_run?.run_number ?? 0;
   let crDecided = false;
   let officeShot = false;
   let refreshChecked = false;
@@ -207,8 +230,10 @@ try {
       await page.goto(`${BASE}/projects/${pid}`);
     }
     // CR-001: once the BA's first work task (requirements draft) has completed
-    const beaDone = st.tasks.filter((t) => t.assigned_agent_id === bea.id && t.kind === "work" && t.status === "completed");
+    const beaDone = st.tasks.filter((t) => (TEAM === "single" || t.assigned_agent_id === bea?.id) && t.kind === "work" && t.status === "completed");
     if (!crSent && beaDone.length) {
+      evidence.timing.cr = Date.now();
+      evidence.interventions.push("submit CR");
       evidence.cr.before = {
         usage: (await api(`/projects/${pid}/costs`)).records.length,
         spend: st.estimated_spend_usd,
@@ -240,26 +265,37 @@ try {
         evidence.screens.cr_approval = await shot(page, "cr-001-impact-approval");
         // Impacted = every completed task listed: the BA's requirements and anything derived from them.
         const listed = ap.payload.tasks ?? [];
-        for (const t of listed) await card.getByRole("checkbox", { name: `Rework “${t.title}”` }).check();
+        evidence.cr.impact = { tasks: listed, preserved: ap.payload.preserved_tasks, at_risk: ap.payload.artifacts_at_risk,
+          impact_by_candidate: ap.payload.impact_by_candidate };
+        evidence.interventions.push("confirm CR impact (accepted defaults)");
         // Superseded requirements: accept the PM's pre-selected proposal as shown on the card.
         const cands = ap.payload.candidates ?? [];
         await card.getByRole("button", { name: "Apply" }).click();
         await sleep(800);
         const reqsAfter = (await api(`/projects/${pid}/state`)).requirements;
-        evidence.cr.approval = { listed: listed.map((t) => t.title), selected: listed.map((t) => t.title),
+        evidence.cr.approval = { listed: listed.map((t) => `${t.title} [${t.impact}/${t.action}] ${t.reason}`),
+          selected: listed.filter((t) => ["rework", "rework_after"].includes(t.action)).map((t) => t.title),
           supersession_method: ap.payload.proposal_method, supersession_rationale: ap.payload.proposal_rationale,
           proposed: cands.filter((c) => c.proposed).map((c) => `${c.ref}: ${c.text}`),
           not_proposed: cands.filter((c) => !c.proposed).map((c) => `${c.ref}: ${c.text}`),
           superseded_after: reqsAfter.filter((r) => r.superseded_by).map((r) => `${r.ref} -> ${r.superseded_by}: ${r.text}`) };
         note("CR-001 supersession confirmed", evidence.cr.approval.superseded_after.length > 0,
           `${ap.payload.proposal_method}: ${evidence.cr.approval.superseded_after.join(" | ")}`);
-        note("CR-001 impact approval decided in the UI", true, `listed for rework: ${listed.map((t) => t.title).join(" | ") || "(none)"}`);
+        note("CR impact decided in the UI (evidence-based defaults)", true,
+          listed.map((t) => `${t.title}: ${t.impact}/${t.action}`).join(" | ") + ` || kept: ${(ap.payload.preserved_tasks || []).join(", ") || "-"}`);
         crDecided = true;
+      } else if (ap.kind === "stale_artifacts") {
+        evidence.gate = (evidence.gate || []).concat([ap.payload.artifacts]);
+        evidence.screens.gate = await shot(page, "delivery-blocked");
+        note("delivery gate blocked stale deliverables", null, ap.payload.artifacts.map((a) => `${a.name}: ${a.reason}`).join(" | "));
+        await card.getByRole("button", { name: "Rework them" }).click();
+        evidence.interventions.push("delivery gate: rework stale deliverables");
       } else if (ap.kind === "clarification") {
         const a = clientAnswer(ap.title);
         await card.getByLabel("Your answer").fill(a);
         await card.getByRole("button", { name: "Answer" }).click();
         evidence.qa.push({ stage: "execution", q: ap.title, a });
+        evidence.interventions.push("answer clarification");
         note("client answered a mid-run question", true, ap.title.slice(0, 120));
       } else if (ap.kind === "tool_authorization") {
         await card.getByRole("button", { name: "Deny" }).click();
@@ -271,17 +307,42 @@ try {
         throw new Error("budget limit reached");
       } else if (ap.kind === "task_failure") {
         evidence.task_failure = ap;
-        note("task failure reported to client", false, ap.explanation.slice(0, 300));
-        await card.getByRole("button", { name: "Skip task" }).click();
+        const retry = process.env.RETRY_FAILED === "1";
+        note(`task failure reported to client (${retry ? "retry" : "skip"})`, null, ap.explanation.slice(0, 200));
+        await card.getByRole("button", { name: retry ? "Retry task" : "Skip task" }).click();
+        evidence.interventions.push(retry ? "retry failed task" : "skip failed task");
+      } else if (ap.kind === "sow" && RESUME_PID) {
+        const plan = ap.payload.plan;
+        for (const q of plan.clarification_questions || []) {
+          const a = clientAnswer(q);
+          await page.getByLabel(q, { exact: true }).fill(a);
+          evidence.qa.push({ stage: "revision plan", q, a });
+        }
+        evidence.revision_plan = plan;
+        await card.getByRole("button", { name: "Approve and start" }).click();
+        evidence.interventions.push("approve revision plan");
+        note("revision plan approved", true, `${plan.tasks.length} task(s): ${plan.tasks.map((t) => `${t.title} [${(t.requirement_refs || []).join(",")}]`).join(" | ")}`);
+      } else if (ap.kind === "deliverable_acceptance" && REVISION_TEXT && !revisionDone) {
+        await card.getByLabel("Revision request").fill(REVISION_TEXT);
+        await card.getByRole("button", { name: "Request revision" }).click();
+        evidence.interventions.push("request revision with the change");
+        evidence.timing.revision_requested = Date.now();
+        note("revision requested on the acceptance card", true, REVISION_TEXT);
+        revisionDone = true;
       } else if (ap.kind === "deliverable_acceptance") {
         // handled after the loop
       }
       await sleep(500);
     }
-    if (run && ["completed", "failed", "cancelled"].includes(run.status)) break;
+    if (run && ["completed", "failed", "cancelled"].includes(run.status)) {
+      if (!revisionDone) { await sleep(1500); continue; }
+      if (REVISION_TEXT && run.run_number <= startRun) { await sleep(1500); continue; }
+      break;
+    }
     if (!refreshChecked && run?.status === "blocked") refreshChecked = true;
     await sleep(2500);
   }
+  evidence.timing.end = Date.now();
   const final = await api(`/projects/${pid}/state`);
   note("9-12 execution finished", final.current_run?.status === "completed", `run status ${final.current_run?.status}`);
 

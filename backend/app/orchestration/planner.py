@@ -31,6 +31,9 @@ class PlanTask(BaseModel):
     expected_output_type: OutputType = "markdown"
     acceptance_criteria: list[str] = Field(min_length=1, max_length=10)
     tools: list[str] = Field(default_factory=list)
+    requirement_refs: list[str] = Field(
+        min_length=1, max_length=30,
+        description="R-ids of the requirement items (from 'Requirements on record') this task implements.")
 
 
 class WorkPlan(BaseModel):
@@ -99,9 +102,18 @@ def validate_plan(db: Session, project: Project, raw: dict[str, Any]) -> tuple[O
     errors: list[str] = []
     team = services.team(db, project.id)
     keys = [t.key for t in plan.tasks]
+    from .. import requirements as _reqs
+
+    active_refs = {r.ref for r in _reqs.active(db, project.id)}
+    retired = {r.ref for r in _reqs.superseded(db, project.id)}
     if len(set(keys)) != len(keys):
         errors.append("task keys must be unique")
     for t in plan.tasks:
+        for ref in t.requirement_refs:
+            if ref in retired:
+                errors.append(f"task {t.key}: {ref} has been superseded; reference the item that replaced it")
+            elif ref not in active_refs:
+                errors.append(f"task {t.key}: unknown requirement reference '{ref}' (use the R-ids listed)")
         a = resolve_assignee(team, t.assignee)
         if a is None:
             errors.append(f"task {t.key}: assignee '{t.assignee}' is not on the team")
@@ -196,6 +208,7 @@ Deadline: {project.deadline or '(none)'}
 {revision}
 
 Instructions:
+- For every task, list in requirement_refs the R-ids of the requirement items it implements (see "Requirements on record"). This traceability decides which work is redone when a requirement later changes, so be precise.
 - Plan the minimum set of tasks that produces the deliverables (a single task is fine for small requests). Use dependencies so independent tasks can run in parallel.
 - Assign each task to the teammate whose role fits; you may assign tasks to yourself. Involve a specialist only when their contribution clearly matters — not every teammate needs work.
 - Do NOT add QA-review, QA-report or final-consolidation tasks, and do not ask anyone to write a QA report or the final consolidated deliverable: the QA Reviewer's review produces the QA report and you produce the final consolidated deliverable automatically at the end. Set qa_review=true when an independent review is worth its cost (it requires a QA Reviewer on the team), false for small or low-risk work.
@@ -252,7 +265,8 @@ def sow_markdown(project: Project, plan: WorkPlan, team: list[ProjectAgent]) -> 
     rows = []
     for t in plan.tasks:
         a = resolve_assignee(team, t.assignee)
-        rows.append(f"| {t.key} | {t.title} | {a.display_name if a else t.assignee} | {', '.join(t.depends_on) or '—'} | {t.expected_output_type} |")
+        rows.append(f"| {t.key} | {t.title} | {a.display_name if a else t.assignee} | {', '.join(t.depends_on) or '—'} | "
+                    f"{', '.join(t.requirement_refs)} | {t.expected_output_type} |")
     return f"""# Statement of Work — {project.name}
 
 {plan.summary}
@@ -267,8 +281,8 @@ def sow_markdown(project: Project, plan: WorkPlan, team: list[ProjectAgent]) -> 
 {li(plan.deliverables)}
 
 ## Work plan
-| Key | Task | Assigned to | Depends on | Output |
-|---|---|---|---|---|
+| Key | Task | Assigned to | Depends on | Implements | Output |
+|---|---|---|---|---|---|
 {chr(10).join(rows)}
 
 ## Acceptance criteria
@@ -346,6 +360,11 @@ def apply_approved_plan(db: Session, project: Project, run: ProjectRun, plan: Wo
         db.add(t)
         by_key[pt.key] = t
     db.flush()
+    from .. import requirements as _reqs, traceability
+
+    ref_to_id = {r.ref: r.id for r in _reqs.active(db, project.id)}
+    for pt in plan.tasks:
+        traceability.link(db, by_key[pt.key], [ref_to_id[r] for r in pt.requirement_refs if r in ref_to_id], "plan")
     for pt in plan.tasks:
         for d in pt.depends_on:
             db.add(TaskDependency(task_id=by_key[pt.key].id, depends_on_task_id=by_key[d].id))

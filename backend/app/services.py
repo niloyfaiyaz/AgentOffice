@@ -29,6 +29,7 @@ def write_artifact(
     db: Session, *, project_id: uuid.UUID, run_id: Optional[uuid.UUID], task_id: Optional[uuid.UUID],
     agent_id: Optional[uuid.UUID], name: str, content: str, artifact_type: str, summary: str = "",
     source_refs: Optional[list[Any]] = None, category: str = "deliverable",
+    execution: Any = None, extra_inputs: Optional[list[Any]] = None,
 ) -> tuple[Artifact, ArtifactVersion, bool]:
     name = name.strip()[:300]
     if not name:
@@ -62,7 +63,9 @@ def write_artifact(
         created = True
     else:
         latest = latest_version(db, art.id)
-        if latest is not None and latest.sha256 == digest:
+        # Identical content from the same task is a no-op. From a different task it is a re-affirmation
+        # under that task's (possibly newer) requirement baseline, so it gets its own version and lineage.
+        if latest is not None and latest.sha256 == digest and (task_id is None or latest.created_by_task_id == task_id):
             return art, latest, False
         art.artifact_type = artifact_type
         art.run_id = run_id or art.run_id
@@ -74,6 +77,13 @@ def write_artifact(
                         created_by_agent_id=agent_id)
     db.add(v)
     db.flush()
+    # Freeze lineage (requirements implemented + exact input versions) and recompute freshness.
+    from . import traceability
+
+    task = db.get(Task, task_id) if task_id else None
+    traceability.snapshot(db, v, task, execution, extra_inputs or [])
+    art.stale, art.stale_reason = False, ""
+    traceability.refresh(db, project_id)
     return art, v, created
 
 

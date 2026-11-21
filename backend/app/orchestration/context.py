@@ -75,6 +75,8 @@ def artifact_digest(db: Session, art: Artifact, inline: bool = True) -> str:
     if v is None:
         return f"- “{art.name}” (empty)"
     head = f"- “{art.name}” v{v.version} ({art.artifact_type}): {v.summary}"
+    if art.stale:
+        head += f"\n  ⚠ STALE - not current: {art.stale_reason.replace('[lineage] ', '').replace('[note] ', '')}"
     if inline and len(v.content) <= INLINE_ARTIFACT_CHARS:
         return f"{head}\n<<<\n{v.content}\n>>>"
     return f"{head}\n  ({len(v.content)} chars — use read_artifact to read it)"

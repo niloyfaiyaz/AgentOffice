@@ -40,6 +40,13 @@ class FakeProvider(Provider):
                    "tools": {t.name for t in tools}, "title": (re.search(r"^# Your task: (.+)$", first, re.M) or [None, ""])[1]}
             self.calls.append(ctx)
             out = self.policy(ctx)
+            if isinstance(out, list):  # fake PM: cite the requirement items actually listed in its brief
+                listed = re.findall(r"^- (R-\d{3}) \[(?:Requirement|Context)", first.split("NO LONGER VALID")[0], re.M)
+                for c in out:
+                    if c.name == "submit_work_plan":
+                        for t in c.input.get("tasks", []):
+                            if t.get("requirement_refs") in (None, ["AUTO"]):
+                                t["requirement_refs"] = listed or ["R-001"]
             if isinstance(out, ProviderError):
                 raise out
             calls = out if isinstance(out, list) else []
@@ -61,9 +68,15 @@ def plan_call(tasks, tool_requirements=()):
 
 
 def simple_worker(ctx):
-    """Write one artifact then complete."""
+    """Write one artifact then complete. Reworks revise the deliverable they were given (as real
+    agents do) instead of creating a new document."""
     if "write_artifact" in ctx["tools"] and "write_artifact" not in ctx["done"]:
-        return [call("write_artifact", name=ctx["title"] or "out", artifact_type="markdown", content=f"# {ctx['title']}",
+        name = ctx["title"] or "out"
+        if ctx["title"].startswith("Rework"):
+            m = re.search(r"^- “(.+?)” v\d+", ctx["brief"].split("# Deliverables to work on", 1)[-1], re.M)
+            if m:
+                name = m.group(1)
+        return [call("write_artifact", name=name, artifact_type="markdown", content=f"# {ctx['title']}\n(revised)",
                      summary="done")]
     if "submit_review" in ctx["tools"] and "submit_review" not in ctx["done"]:
         return [call("submit_review", verdict="pass", summary="fine", findings=[])]

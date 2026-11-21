@@ -74,8 +74,9 @@ def review_gate(state: RunState) -> RunState:
     return {"outcome": flow.review_gate(_run(state))}
 
 
-def after_review(state: RunState) -> Literal["execute", "finalize"]:
-    return "execute" if state.get("outcome") == "more_work" else "finalize"
+def after_review(state: RunState) -> Literal["execute", "finalize", "settle"]:
+    o = state.get("outcome")
+    return "execute" if o == "more_work" else "settle" if o == "blocked" else "finalize"
 
 
 def settle(state: RunState) -> RunState:
@@ -83,8 +84,13 @@ def settle(state: RunState) -> RunState:
 
 
 def finalize(state: RunState) -> RunState:
-    flow.finalize(_run(state))
+    if not flow.finalize(_run(state)):
+        return {"outcome": "blocked"}
     return {"outcome": "completed"}
+
+
+def after_finalize(state: RunState) -> Literal["settle", "__end__"]:
+    return "settle" if state.get("outcome") == "blocked" else END
 
 
 def halt(state: RunState) -> RunState:
@@ -105,9 +111,9 @@ def build_graph(checkpointer=None):
     g.add_conditional_edges("route", route_next, ["plan", "execute", "halt", END])
     g.add_edge("plan", END)
     g.add_conditional_edges("execute", after_execute, ["review_gate", "settle", "halt"])
-    g.add_conditional_edges("review_gate", after_review, ["execute", "finalize"])
+    g.add_conditional_edges("review_gate", after_review, ["execute", "finalize", "settle"])
     g.add_edge("settle", END)
-    g.add_edge("finalize", END)
+    g.add_conditional_edges("finalize", after_finalize, ["settle", END])
     g.add_edge("halt", END)
     return g.compile(checkpointer=checkpointer)
 

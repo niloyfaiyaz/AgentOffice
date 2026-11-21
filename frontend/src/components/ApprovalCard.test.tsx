@@ -67,4 +67,42 @@ describe("ApprovalCard", () => {
     const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
     expect(body).toEqual({ decision: "approve", task_ids: ["t1"], supersede_ids: ["c1", "c2"] });
   });
+
+  it("defaults rework to the evidence and follows the client's supersession choice", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    renderCard({ ...base, kind: "requirement_change", title: "Confirm R-009", payload: {
+      change_ref: "R-009", proposal_method: "project_manager",
+      candidates: [{ id: "email", ref: "R-007", text: "Every contact must have an email.", proposed: true },
+                   { id: "dup", ref: "R-003", text: "Identify duplicates.", proposed: false }],
+      impact_by_candidate: { email: ["tA", "tB"], dup: ["tC"] },
+      tasks: [{ id: "tA", title: "Validation rules", action: "rework", impact: "direct", reason: "implements R-007" },
+              { id: "tB", title: "Import summary", action: "rework_after", impact: "downstream", reason: "uses output of “Validation rules”" },
+              { id: "tC", title: "Duplicates", action: "if_selected", impact: "if_selected", reason: "only if you also replace R-003" },
+              { id: "tU", title: "Legacy notes", action: "confirm", impact: "uncertain", reason: "no requirement links recorded" }],
+      preserved_tasks: ["Glossary"], artifacts_at_risk: [{ id: "x", name: "rules.md", version: 1 }] } });
+    expect(screen.getByRole("checkbox", { name: /^Rework “Validation rules”/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /^Rework “Import summary”/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /^Rework “Duplicates”/ })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /^Rework “Legacy notes”/ })).not.toBeChecked();
+    expect(screen.getByText("needs your confirmation")).toBeInTheDocument();
+    expect(screen.getByText(/Unaffected \(kept\):/)).toBeInTheDocument();
+    expect(screen.getByText(/rules.md v1/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: /R-003 Identify duplicates/ }));  // client also replaces R-003
+    expect(screen.getByRole("checkbox", { name: /^Rework “Duplicates”/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.task_ids.sort()).toEqual(["tA", "tB", "tC"]);
+  });
+
+  it("explains a blocked delivery and offers rework or confirmation", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    renderCard({ ...base, kind: "stale_artifacts", title: "Delivery blocked: 1 deliverable(s) are not current", payload: {
+      artifacts: [{ artifact_id: "a1", name: "prd.md", version: 2, reason: "implements superseded R-009 (replaced by R-021)" }] } });
+    expect(screen.getByText("Delivery blocked")).toBeInTheDocument();
+    expect(screen.getByText(/implements superseded R-009/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Rework them" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({ decision: "approve", option: "rework" });
+  });
 });
