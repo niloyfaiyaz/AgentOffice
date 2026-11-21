@@ -975,7 +975,112 @@ async def test_D6_budget_block_separates_actual_spend_from_reservations(client, 
         run = client.post(f"/api/projects/{proj['id']}/runs", json={}).json()
         await drive(run["id"])
         [b] = pending(client, proj["id"], "budget")
-        assert "Spent so far (estimated): $0.0000" in b["explanation"]
-        assert "Reserved for calls already in progress" in b["explanation"] and "worst case" in b["explanation"]
+        assert "spent $0.0000" in b["explanation"] and "reserved for calls in progress $0.0000" in b["explanation"]
+        assert "worst case" in b["explanation"] and "output tokens must fit" in b["explanation"]
     finally:
         registry.set_override("anthropic", None)
+
+
+
+# --- Budget reservations: cap the output allowance instead of blocking; the cap stays a guarantee ---
+class WorstCaseProvider(FakeProvider):
+    """Bills every call at its worst case: input from the real request size, output = max_tokens."""
+
+    async def complete(self, *, model, system, messages, tools, max_tokens, effort=None):
+        r = await super().complete(model=model, system=system, messages=messages, tools=tools, max_tokens=max_tokens,
+                                   effort=effort)
+        import json as _json
+        from app.pricing import estimate_tokens
+        sent = len(system) + sum(len(str(m.get("content"))) for m in messages) + sum(
+            len(t.name) + len(t.description) + len(_json.dumps(t.input_schema)) for t in tools)
+        r.usage.input_tokens, r.usage.output_tokens = estimate_tokens(sent), max_tokens
+        self.max_tokens_seen = getattr(self, "max_tokens_seen", []) + [max_tokens]
+        return r
+
+
+def _priced_project(client, fake_policy, budget, *, concurrency=1, roles=("project_manager", "business_analyst")):
+    p = WorstCaseProvider(fake_policy, test_provider=False)
+    registry.set_override("scripted-test", p)
+    registry.set_override("anthropic", p)
+    proj = make_project(client, roles=roles, provider="anthropic", model="claude-opus-5-5")  # $4 / $20 per Mtok
+    from app.security import credentials
+    credentials.save_secret("anthropic", "sk-ant-test-0000000000")
+    client.put(f"/api/projects/{proj['id']}/budget", json={"budget_usd": budget, "max_concurrency": concurrency})
+    return p, proj
+
+
+async def test_budget_caps_output_allowance_instead_of_blocking(client):
+    """With $0.70 left, the 16,000-token worst case ($0.32+) no longer fits twice: later calls run
+    with a reduced allowance instead of stopping the run, and spend never passes the budget."""
+    try:
+        p, proj = _priced_project(client, planner_then([T("A", "Bea"), T("B", "Bea")]), 0.70)
+        run = client.post(f"/api/projects/{proj['id']}/runs", json={}).json()
+        await drive(run["id"])
+        [sow] = pending(client, proj["id"], "sow")
+        client.post(f"/api/approvals/{sow['id']}/decide", json={"decision": "approve"})
+        await drive(run["id"])
+        spent = client.get(f"/api/projects/{proj['id']}/costs").json()["estimated_total_usd"]
+        assert spent <= 0.70  # guarantee holds even though EVERY call was billed at its worst case
+        assert any(m < 16000 for m in p.max_tokens_seen)  # some calls ran with a reduced allowance
+        evs = [e for e in client.get(f"/api/projects/{proj['id']}/events").json() if e["type"] == "budget_capped"]
+        assert evs and "reduced from 16000" in evs[0]["message"]
+        assert not [e for e in client.get(f"/api/projects/{proj['id']}/events").json() if e["type"] == "budget_estimate_exceeded"]
+    finally:
+        registry.set_override("anthropic", None)
+        registry.set_override("scripted-test", None)
+
+
+async def test_budget_blocks_only_below_the_minimum_useful_allowance(client):
+    try:
+        p, proj = _priced_project(client, planner_then([T("A", "Bea"), T("B", "Bea"), T("C", "Bea")]), 0.40)
+        run = client.post(f"/api/projects/{proj['id']}/runs", json={}).json()
+        await drive(run["id"])
+        [sow] = pending(client, proj["id"], "sow")
+        client.post(f"/api/approvals/{sow['id']}/decide", json={"decision": "approve"})
+        await drive(run["id"])
+        [b] = pending(client, proj["id"], "budget")
+        assert "2000 output tokens must fit" in b["explanation"]
+        assert min(p.max_tokens_seen) >= 2000  # no call ever ran with a uselessly small allowance
+        spent = client.get(f"/api/projects/{proj['id']}/costs").json()["estimated_total_usd"]
+        assert spent <= 0.40
+    finally:
+        registry.set_override("anthropic", None)
+        registry.set_override("scripted-test", None)
+
+
+async def test_parallel_calls_share_the_remaining_budget_safely(client):
+    """Concurrent tasks reserve their worst case; together they can never exceed the budget."""
+    try:
+        policy = planner_then([T("A", "Bea"), T("B", "Archie"), T("C", "Bea"), T("D", "Archie")])
+        p, proj = _priced_project(client, policy, 0.90, concurrency=4,
+                                  roles=("project_manager", "business_analyst", "software_architect"))
+        p.delay = 0.05
+        run = client.post(f"/api/projects/{proj['id']}/runs", json={}).json()
+        await drive(run["id"])
+        [sow] = pending(client, proj["id"], "sow")
+        client.post(f"/api/approvals/{sow['id']}/decide", json={"decision": "approve"})
+        await drive(run["id"])
+        spent = client.get(f"/api/projects/{proj['id']}/costs").json()["estimated_total_usd"]
+        assert spent <= 0.90 and p.max_active >= 2
+    finally:
+        registry.set_override("anthropic", None)
+        registry.set_override("scripted-test", None)
+
+
+async def test_agent_spend_limit_is_guaranteed_across_parallel_tasks(client):
+    try:
+        policy = planner_then([T("A", "Bea"), T("B", "Bea"), T("C", "Bea")])
+        p, proj = _priced_project(client, policy, None, concurrency=3)
+        bea = next(a for a in client.get(f"/api/projects/{proj['id']}/agents").json() if a["display_name"] == "Bea")
+        client.patch(f"/api/projects/{proj['id']}/agents/{bea['id']}", json={"spend_limit_usd": 0.50})
+        p.delay = 0.05
+        run = client.post(f"/api/projects/{proj['id']}/runs", json={}).json()
+        await drive(run["id"])
+        [sow] = pending(client, proj["id"], "sow")
+        client.post(f"/api/approvals/{sow['id']}/decide", json={"decision": "approve"})
+        await drive(run["id"])
+        by_agent = {a["key"]: a["estimated_cost_usd"] for a in client.get(f"/api/projects/{proj['id']}/costs").json()["by_agent"]}
+        assert by_agent["Bea"] <= 0.50
+    finally:
+        registry.set_override("anthropic", None)
+        registry.set_override("scripted-test", None)

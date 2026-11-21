@@ -57,7 +57,11 @@ def test_pricing():
     assert c == Decimal("6.200000")
     assert pricing.cost_of(ModelConfiguration(provider="openai", model_id="x", display_name="x"), Usage(1, 1)) is None
     est = pricing.estimate_call_cost(mc, 3500, 1000)
-    assert est == Decimal("0.024200")  # 1050 tok * $4/M + 1000 * $20/M
+    # input bound: (1050 tok * 1.25 margin + 200 overhead) * $4/M = $0.00605; output: 1000 * $20/M = $0.02
+    assert est == Decimal("0.026050")
+    room = Decimal("0.026050")
+    assert pricing.affordable_output_tokens(mc, room, 3500) == 1000  # inverse of the estimate
+    assert pricing.affordable_output_tokens(mc, Decimal("0.001"), 3500) == 0  # input alone does not fit
 
 
 def test_file_validation():

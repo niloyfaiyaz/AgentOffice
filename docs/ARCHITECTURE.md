@@ -100,6 +100,22 @@ completed and in-flight tasks for targeted rework.
 - **Delivery gate:** a stage-aware gate blocks QA, consolidation and finalization while any deliverable is
   stale. See [CHANGE_MANAGEMENT_VALIDATION.md](CHANGE_MANAGEMENT_VALIDATION.md).
 
+### Budget enforcement
+
+Before every model call, `budget.plan_call` computes the call's **worst case**: an input bound
+(everything sent, including tool schemas, with a 25% margin and overhead) plus the output allowance
+actually sent to the provider.
+- **Headroom:** it subtracts that worst case from the headroom under every hard limit (project budget,
+  agent limit, task allocation). Headroom accounts for what has been spent and what in-flight calls have
+  reserved, per run and per agent.
+- **Cap before blocking:** if the agent's full allowance doesn't fit, the call runs with the largest
+  allowance that does, and a `budget_capped` event is recorded. It is blocked for a client decision only
+  when fewer than 2,000 output tokens would fit.
+- **Guarantee:** because the reservation equals the real worst case, limits hold even when every call
+  produces its maximum output.
+- **Caveat:** the input side is a heuristic bound. Any call that costs more than its estimate is logged
+  as `budget_estimate_exceeded`.
+
 ### Safeguards
 
 - Max delegation depth, max model calls per run and per task, max review iterations, concurrency limit,

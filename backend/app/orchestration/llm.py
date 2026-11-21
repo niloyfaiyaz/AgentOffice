@@ -3,6 +3,7 @@ bounded retries -> usage record + activity event."""
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from typing import Any, Optional, Union
 
@@ -31,24 +32,28 @@ async def call_model(
         raise ProviderError("not_configured", f"{agent.display_name} has no AI model assigned.")
     provider = provider or get_provider(agent.provider)
     mc = services.model_config(db, agent.provider, agent.model_id)
-    prompt_chars = len(system) + sum(len(str(m.get("content"))) for m in messages)
+    # Everything sent counts toward the input bound: system prompt, messages AND tool schemas.
+    prompt_chars = (len(system) + sum(len(str(m.get("content"))) for m in messages)
+                    + sum(len(t.name) + len(t.description) + len(json.dumps(t.input_schema)) for t in tools))
+    web_searches = sum(int((t.native or {}).get("max_uses", 0)) for t in tools if t.native)
     max_tokens = agent.max_output_tokens
     if mc and mc.max_output_tokens:
         max_tokens = min(max_tokens, mc.max_output_tokens)
-    estimate = pricing.estimate_call_cost(mc, prompt_chars, max_tokens)
+    plan = budget.plan_call(db, project=project, run=run, agent=agent, task=task, mc=mc, prompt_chars=prompt_chars,
+                            max_tokens=max_tokens, web_searches=web_searches, is_test=provider.is_test_provider)
+    if isinstance(plan, budget.BudgetBlock):
+        return Blocked(plan)
+    max_tokens, estimate = plan.max_tokens, plan.estimate
+    if plan.reduced_from is not None:
+        events.emit(db, project.id, "budget_capped",
+                    f"{agent.display_name}'s output allowance for this call was reduced from {plan.reduced_from} to "
+                    f"{max_tokens} tokens to stay within {plan.limit}",
+                    run_id=run.id if run else None, agent_id=agent.id, task_id=task.id if task else None,
+                    data={"from": plan.reduced_from, "to": max_tokens, "worst_case_usd": str(estimate)})
     if run is not None:
-        blk = budget.check(db, project=project, run=run, agent=agent, task=task, mc=mc, estimate=estimate,
-                           is_test=provider.is_test_provider)
-        if blk is not None:
-            return Blocked(blk)
         # Count the call against the run before making it (atomic increment).
         db.execute(update(ProjectRun).where(ProjectRun.id == run.id).values(model_calls=ProjectRun.model_calls + 1))
-        budget.reserve(run.id, estimate)
-    else:
-        blk = budget.check_outside_run(db, project=project, agent=agent, estimate=estimate,
-                                       is_test=provider.is_test_provider)
-        if blk is not None:
-            return Blocked(blk)
+    budget.reserve(run.id if run else None, estimate, agent.id)
     db.commit()
     try:
         last: Optional[ProviderError] = None
@@ -69,9 +74,13 @@ async def call_model(
         else:  # pragma: no cover
             raise last or ProviderError("server", "unknown")
     finally:
-        if run is not None:
-            budget.release(run.id, estimate)
+        budget.release(run.id if run else None, estimate, agent.id)
     cost = pricing.cost_of(mc, result.usage)
+    if cost is not None and estimate is not None and cost > estimate and not provider.is_test_provider:
+        # Transparency: the worst-case bound was wrong (e.g. the input heuristic under-counted).
+        events.emit(db, project.id, "budget_estimate_exceeded",
+                    f"A call cost ${cost:.4f}, above its worst-case estimate of ${estimate:.4f}",
+                    run_id=run.id if run else None, agent_id=agent.id, task_id=task.id if task else None)
     rec = UsageRecord(
         id=new_id(), project_id=project.id, run_id=run.id if run else None, task_id=task.id if task else None, agent_id=agent.id,
         provider=agent.provider, model_id=agent.model_id, purpose=purpose,

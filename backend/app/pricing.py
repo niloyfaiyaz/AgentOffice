@@ -49,11 +49,31 @@ def estimate_tokens(text_chars: int) -> int:
     return int(text_chars / 3.5) + 50
 
 
-def estimate_call_cost(mc: Optional[ModelConfiguration], prompt_chars: int, max_output_tokens: int) -> Optional[Decimal]:
-    """Upper-bound estimate for one call: estimated input + the full output allowance."""
+# Safety margin on the (heuristic) input-token estimate, plus fixed per-request overhead tokens.
+INPUT_MARGIN = Decimal("1.25")
+INPUT_OVERHEAD_TOKENS = 200
+
+
+def input_cost_bound(mc: ModelConfiguration, prompt_chars: int, web_searches: int = 0) -> Decimal:
+    """Upper bound on a call's input-side cost: everything sent (messages, system prompt AND tool
+    schemas), with a margin on the token estimate, plus provider-side web searches."""
+    tokens = Decimal(estimate_tokens(prompt_chars)) * INPUT_MARGIN + INPUT_OVERHEAD_TOKENS
+    return tokens * mc.input_price_per_mtok / MTOK + Decimal(web_searches) * WEB_SEARCH_PRICE_USD
+
+
+def estimate_call_cost(mc: Optional[ModelConfiguration], prompt_chars: int, max_output_tokens: int,
+                       web_searches: int = 0) -> Optional[Decimal]:
+    """Worst-case cost of one call: input bound + the full output allowance actually sent."""
     if not is_priced(mc):
         return None
     assert mc is not None
-    inp = Decimal(estimate_tokens(prompt_chars)) * mc.input_price_per_mtok / MTOK
     out = Decimal(max_output_tokens) * mc.output_price_per_mtok / MTOK
-    return (inp + out).quantize(Decimal("0.000001"))
+    return (input_cost_bound(mc, prompt_chars, web_searches) + out).quantize(Decimal("0.000001"))
+
+
+def affordable_output_tokens(mc: ModelConfiguration, headroom: Decimal, prompt_chars: int, web_searches: int = 0) -> int:
+    """Largest output allowance whose worst-case call cost fits in ``headroom``."""
+    spare = headroom - input_cost_bound(mc, prompt_chars, web_searches)
+    if spare <= 0 or not mc.output_price_per_mtok:
+        return 0
+    return int(spare * MTOK / mc.output_price_per_mtok)

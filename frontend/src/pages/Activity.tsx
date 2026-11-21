@@ -11,7 +11,7 @@ const GROUPS: Record<string, string[]> = {
   "Handoffs": ["handoff", "handoff_returned", "rework_requested", "review_requested"],
   "Decisions": ["approval_requested", "decision_recorded", "plan_proposed", "plan_approved"],
   "Tools": ["tool_call", "tool_action", "tool_denied", "artifact_written"],
-  "Models & cost": ["model_call", "provider_error", "budget_warning", "budget_blocked", "model_changed", "model_switched"],
+  "Models & cost": ["model_call", "provider_error", "budget_warning", "budget_blocked", "budget_capped", "budget_estimate_exceeded", "model_changed", "model_switched"],
 };
 
 export function ActivityPage({ pid }: { pid: string }) {

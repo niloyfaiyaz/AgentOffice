@@ -52,8 +52,8 @@ The guarantee is bounded:
 
 **Is any additional architectural modification necessary before broader testing?**
 **No blocking modification.** Two non-blocking changes are recommended:
-1. A smarter budget-reservation policy. Worst-case reservations stopped the multi-agent run twice, well
-   below real spend.
+1. A smarter budget-reservation policy. *(Done in a follow-up: calls are capped to the affordable output
+   allowance instead of being blocked; see risk 4.)*
 2. Tighter PM requirement linking. Broad links limit how much work can be preserved.
 
 ## 1. Architecture changes implemented
@@ -259,9 +259,12 @@ Provider billing is authoritative.
    reworks the whole document.
 3. **Additive changes** cannot be proven stale (nothing is superseded). They are surfaced to the client
    as uncertain, which is correct but needs human judgement.
-4. **Budget reservations are conservative.** The worst-case policy guarantees caps but blocks early with
-   expensive models and parallel agents. Options: size the per-agent output allowance by role, or
-   estimate from observed output with an explicit "may exceed by ≤ one call" setting.
+4. ~~**Budget reservations are conservative.**~~ **Fixed (2026-11-21, follow-up).** When the full output
+   allowance doesn't fit, a call now runs with the largest allowance that does (sent to the provider as
+   its hard output limit), instead of blocking. It blocks only below 2,000 output tokens. The input bound
+   now counts tool schemas, with a 25% margin, and reservations are tracked per agent as well as per run.
+   Tests bill every call at its worst case and confirm project, agent and parallel-call limits are never
+   exceeded. Not re-measured with a real provider.
 5. **Deterministic checks are keyword-based.** They missed the single-agent package's contradictory
    acceptance criterion, which the blind review caught. They are necessary, not sufficient.
 6. **No single-agent self-review step.** A configuration without a QA Reviewer gets no independent review.
