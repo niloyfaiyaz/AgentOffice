@@ -18,6 +18,7 @@ requirements mid-project, and controlling spend. All of it is visualized live in
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![BYOK](https://img.shields.io/badge/BYOK-Anthropic%20%7C%20OpenAI-black)
 ![Tests](https://img.shields.io/badge/tests-75%20backend%20·%2015%20UI%20·%202%20e2e-brightgreen)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <img src="docs/images/office-working.png" width="860" alt="The pixel-art office: Bea is working, Archie has just been assigned a task, and the status board shows the run state and spend" />
 
@@ -194,6 +195,10 @@ AgentOffice is a working v1, verified end-to-end with OpenAI. Known gaps and nex
 - [ ] Web research beyond Anthropic's built-in search
 
 Issues and pull requests are welcome. Please run `./agentoffice test` before submitting.
+
+## License
+
+[MIT](LICENSE). You're free to use, modify and distribute it, including commercially.
 
 ## Configuration
 
