@@ -140,6 +140,7 @@ async function request<T>(method: string, path: string, body?: unknown, isForm =
 }
 
 export const api = {
+  authCheck: () => request<{ ok: boolean }>("GET", "/auth/check"),
   get: <T,>(p: string) => request<T>("GET", p),
   post: <T,>(p: string, b?: unknown) => request<T>("POST", p, b ?? {}),
   put: <T,>(p: string, b?: unknown) => request<T>("PUT", p, b ?? {}),

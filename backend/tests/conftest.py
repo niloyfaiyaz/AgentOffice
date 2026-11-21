@@ -6,8 +6,24 @@ deterministic, non-AI model; they are labelled MOCKED-PROVIDER in their docstrin
 """
 import os
 
+
+def _db_password() -> str:
+    # Read the per-install password from the git-ignored .env without importing app.config
+    # (which would build Settings before the test overrides below are in place).
+    if "AGENTOFFICE_DB_PASSWORD" in os.environ:
+        return os.environ["AGENTOFFICE_DB_PASSWORD"]
+    env = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+    if os.path.exists(env):
+        for line in open(env):
+            if line.startswith("AGENTOFFICE_DB_PASSWORD="):
+                return line.split("=", 1)[1].strip()
+    return "agentoffice-local"
+
+
 TEST_DB = os.environ.get("AGENTOFFICE_TEST_DATABASE_URL",
-                         "postgresql+psycopg://agentoffice:agentoffice-local@127.0.0.1:55432/agentoffice_test")
+                         f"postgresql+psycopg://agentoffice:{_db_password()}@127.0.0.1:55432/agentoffice_test")
+TEST_API_TOKEN = "test-api-token"
+os.environ["AGENTOFFICE_API_TOKEN"] = TEST_API_TOKEN
 os.environ["AGENTOFFICE_DATABASE_URL"] = TEST_DB
 os.environ["AGENTOFFICE_ENABLE_TEST_PROVIDER"] = "1"
 os.environ.setdefault("AGENTOFFICE_DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "data", "test"))
@@ -68,5 +84,5 @@ def client():
     from fastapi.testclient import TestClient
     from app.main import app
 
-    with TestClient(app, headers={"X-AgentOffice-Client": "1"}) as c:
+    with TestClient(app, headers={"X-AgentOffice-Client": "1", "Authorization": f"Bearer {TEST_API_TOKEN}"}) as c:
         yield c

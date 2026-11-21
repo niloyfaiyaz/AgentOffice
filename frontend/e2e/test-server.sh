@@ -3,7 +3,9 @@
 # TEST database and the scripted (non-AI) test provider. Never touches real projects.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-export AGENTOFFICE_DATABASE_URL="postgresql+psycopg://agentoffice:agentoffice-local@127.0.0.1:55432/agentoffice_test"
+PW="$(grep '^AGENTOFFICE_DB_PASSWORD=' "$ROOT/.env" 2>/dev/null | cut -d= -f2- || true)"
+export AGENTOFFICE_DATABASE_URL="postgresql+psycopg://agentoffice:${PW:-agentoffice-local}@127.0.0.1:55432/agentoffice_test"
+export AGENTOFFICE_API_TOKEN="e2e-test-token"
 export AGENTOFFICE_ENABLE_TEST_PROVIDER=1
 export AGENTOFFICE_DATA_DIR="$ROOT/data/e2e"
 export AGENTOFFICE_PORT=8799

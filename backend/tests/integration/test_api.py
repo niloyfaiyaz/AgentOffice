@@ -87,10 +87,35 @@ def test_security_middleware():
     from fastapi.testclient import TestClient
     from app.main import app
 
+    from tests.conftest import TEST_API_TOKEN
+
+    bearer = {"Authorization": f"Bearer {TEST_API_TOKEN}"}
     with TestClient(app) as c:
-        assert c.post("/api/projects", json={"name": "x", "objective": "y"}).status_code == 403  # no client header
-        assert c.get("/api/health", headers={"host": "attacker.example"}).status_code == 403  # DNS rebinding
+        # Authentication: no token, wrong token -> 401; health stays public for the launcher.
+        assert c.get("/api/projects").status_code == 401
+        assert c.get("/api/projects", headers={"Authorization": "Bearer wrong"}).status_code == 401
+        assert c.get("/api/providers").status_code == 401
         assert c.get("/api/health").status_code == 200
+        assert c.get("/api/projects", headers=bearer).status_code == 200
+        # CSRF header still required on writes, even when authenticated.
+        assert c.post("/api/projects", json={"name": "x", "objective": "y"}, headers=bearer).status_code == 403
+        assert c.get("/api/health", headers={"host": "attacker.example"}).status_code == 403  # DNS rebinding
+
+
+def test_browser_session_cookie():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from tests.conftest import TEST_API_TOKEN
+
+    with TestClient(app) as c:
+        assert c.get("/api/auth/session?token=wrong", follow_redirects=False).status_code == 401
+        assert "agentoffice_session" not in c.cookies
+        r = c.get(f"/api/auth/session?token={TEST_API_TOKEN}", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/"
+        sc = r.headers["set-cookie"].lower()
+        assert "httponly" in sc and "samesite=strict" in sc
+        assert c.get("/api/auth/check").status_code == 200  # cookie now authenticates
+        assert c.get("/api/projects").status_code == 200
 
 
 def test_model_pricing_edit(client):

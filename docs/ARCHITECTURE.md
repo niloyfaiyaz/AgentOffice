@@ -4,7 +4,7 @@
 
 ```
 Browser ── React pages ── officeModel (pure reduce/step) ── Phaser renderer
-   │  GET /state (snapshot) + SSE /stream?after=seq; mutations carry X-AgentOffice-Client
+   │  GET /state (snapshot) + SSE /stream?after=seq; session cookie; mutations carry X-AgentOffice-Client
    ▼
 FastAPI (127.0.0.1) ── routes ── decisions (client interventions) ──┐
    │                                                                 │
@@ -128,8 +128,15 @@ actually sent to the provider.
 ### Security boundaries
 
 - The browser never sees API keys; keys live in the OS keychain.
-- The server binds to 127.0.0.1 only. Host-header allowlisting blocks DNS rebinding. Mutating
-  requests need a custom header, which blocks cross-site form posts.
+- The server binds to 127.0.0.1 only. Every `/api` request except `/api/health` needs the
+  per-install token (`data/api-token`, mode 600, created on first start): as an HttpOnly,
+  SameSite=Strict cookie set by `/api/auth/session` (the launcher's sign-in link, which redirects to
+  a fixed path), or as `Authorization: Bearer`. Host-header allowlisting blocks DNS rebinding.
+  Mutating requests also need a custom header, which blocks cross-site form posts.
+- PostgreSQL binds to 127.0.0.1 with a random per-install password in the git-ignored `.env`
+  (mode 600). The launcher sets it on every start, which migrated older installs off the fixed
+  default without data loss.
+- The sandbox and database images are pinned by digest; Dependabot watches pip, npm and Docker.
 - Uploads are type- and size-checked, stored under random names, and shown to agents only inside an
   `<untrusted_document>` envelope (name sanitized, closing tags neutralized).
 - Tool permissions are enforced server-side. Unknown or unauthorized tool calls fail safely and are

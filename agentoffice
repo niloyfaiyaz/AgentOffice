@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AgentOffice launcher: ./agentoffice start | stop | status | logs | test
+# AgentOffice launcher: ./agentoffice start | open | stop | status | logs | test
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 RUN="$ROOT/data/run"
@@ -19,11 +19,35 @@ need_docker() {
   fi
 }
 
+ENV_FILE="$ROOT/.env"
+
+# Per-install secrets live in the git-ignored .env (mode 600), never in the repository.
+ensure_env() {
+  if ! grep -q '^AGENTOFFICE_DB_PASSWORD=' "$ENV_FILE" 2>/dev/null; then
+    umask 077
+    printf 'AGENTOFFICE_DB_PASSWORD=%s\n' "$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)" >>"$ENV_FILE"
+  fi
+  chmod 600 "$ENV_FILE"
+  AGENTOFFICE_DB_PASSWORD="$(grep '^AGENTOFFICE_DB_PASSWORD=' "$ENV_FILE" | head -1 | cut -d= -f2-)"
+  export AGENTOFFICE_DB_PASSWORD
+}
+
+# Older installs used the fixed password "agentoffice-local". Setting this install's password
+# on every start is idempotent and migrates them in place (data is kept). It runs inside the
+# container over the local socket, and the password goes through stdin, not the command line.
+sync_db_password() {
+  printf "ALTER USER agentoffice WITH PASSWORD '%s';\n" "$AGENTOFFICE_DB_PASSWORD" \
+    | docker exec -i agentoffice-postgres psql -q -U agentoffice -d postgres >/dev/null \
+    || die "Could not set the database password."
+}
+
 setup() {
   need_docker
+  ensure_env
   say "Starting PostgreSQL (127.0.0.1:55432)..."
   docker compose -f "$ROOT/docker-compose.yml" up -d postgres >/dev/null
   for _ in $(seq 1 60); do docker exec agentoffice-postgres pg_isready -U agentoffice >/dev/null 2>&1 && break; sleep 1; done
+  sync_db_password
   if ! docker image inspect agentoffice-sandbox:1 >/dev/null 2>&1; then
     say "Building the code sandbox image (one time)..."
     docker compose -f "$ROOT/docker-compose.yml" --profile build-only build sandbox-image >"$RUN/sandbox-build.log" 2>&1 \
@@ -67,7 +91,17 @@ start() {
   for _ in $(seq 1 30); do curl -sf "http://127.0.0.1:$PORT/api/health" >/dev/null && break; sleep 1; done
   curl -sf "http://127.0.0.1:$PORT/api/health" >/dev/null || die "Server did not start; see data/run/server.log"
   say "AgentOffice is running: http://127.0.0.1:$PORT"
-  [[ "${AGENTOFFICE_NO_BROWSER:-}" == "1" ]] || { command -v open >/dev/null && open "http://127.0.0.1:$PORT" || true; }
+  [[ "${AGENTOFFICE_NO_BROWSER:-}" == "1" ]] || open_ui
+}
+
+# Opens the browser through a one-time sign-in link that sets a same-site-only cookie.
+open_ui() {
+  local tok="$ROOT/data/api-token"
+  [[ -f "$tok" ]] || die "AgentOffice has not been started yet. Run ./agentoffice start"
+  local url="http://127.0.0.1:$PORT/api/auth/session?token=$(cat "$tok")"
+  if command -v open >/dev/null; then open "$url"
+  elif command -v xdg-open >/dev/null; then xdg-open "$url" >/dev/null 2>&1
+  else say "Open this link in your browser: $url"; fi
 }
 
 stop() {
@@ -81,6 +115,7 @@ stop() {
 
 case "${1:-start}" in
   start) start ;;
+  open) open_ui ;;
   stop) stop "${2:-}" ;;
   restart) stop; start ;;
   status) for p in server worker; do running "$p" && say "$p: running (pid $(cat "$RUN/$p.pid"))" || say "$p: stopped"; done ;;
@@ -89,5 +124,5 @@ case "${1:-start}" in
     setup
     (cd "$ROOT/backend" && "$VENV/bin/python" -m pytest tests/ -q </dev/null)
     (cd "$ROOT/frontend" && npx vitest run) ;;
-  *) echo "usage: ./agentoffice start|stop [--all]|restart|status|logs [n]|test"; exit 2 ;;
+  *) echo "usage: ./agentoffice start|open|stop [--all]|restart|status|logs [n]|test"; exit 2 ;;
 esac

@@ -11,6 +11,8 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:8799",
     viewport: { width: 1280, height: 900 },
     trace: "retain-on-failure",
+    // The isolated test server uses a fixed, test-only API token (see e2e/test-server.sh).
+    extraHTTPHeaders: { Authorization: "Bearer e2e-test-token" },
     // Optional: reuse an already-installed Chromium instead of `npx playwright install chromium`.
     launchOptions: process.env.PLAYWRIGHT_CHROMIUM_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } : {},
   },

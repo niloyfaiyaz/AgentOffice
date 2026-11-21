@@ -17,7 +17,7 @@ requirements mid-project, and controlling spend. All of it is visualized live in
 ![Phaser](https://img.shields.io/badge/Phaser-3-8A2BE2)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![BYOK](https://img.shields.io/badge/BYOK-Anthropic%20%7C%20OpenAI-black)
-![Tests](https://img.shields.io/badge/tests-75%20backend%20·%2015%20UI%20·%202%20e2e-brightgreen)
+![Tests](https://img.shields.io/badge/tests-77%20backend%20·%2015%20UI%20·%203%20e2e-brightgreen)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <img src="docs/images/office-working.png" width="860" alt="The pixel-art office: Bea is working, Archie has just been assigned a task, and the status board shows the run state and spend" />
@@ -125,7 +125,7 @@ cd AgentOffice
 ```
 
 The first start installs everything, starts PostgreSQL in Docker, builds the code sandbox and the UI,
-then opens **http://127.0.0.1:8765**. Then:
+then opens **http://127.0.0.1:8765** with a one-time sign-in link. Then:
 
 1. **Settings:** paste your API key. It's stored in your OS keychain, never in the database or the browser.
 2. **Start new project:** pick a template and describe the outcome you want.
@@ -134,6 +134,7 @@ then opens **http://127.0.0.1:8765**. Then:
 5. **Open the Virtual Office** and watch, answering questions as they come.
 
 ```bash
+./agentoffice open        # sign this browser in again (e.g. after clearing cookies)
 ./agentoffice stop --all   # stop everything
 ./agentoffice logs         # server and worker logs
 ./agentoffice test         # backend and UI test suites
@@ -144,14 +145,20 @@ then opens **http://127.0.0.1:8765**. Then:
 - **Local-first.** Projects, files and history live on your machine (PostgreSQL in Docker, files under `data/`).
 - **BYOK.** Your keys go to your OS keychain (encrypted-file fallback). Prompts go only to the providers
   *you* configure. No telemetry.
-- **Loopback only.** The app binds to `127.0.0.1`, with host-header checks against DNS rebinding and a
-  required header on writes against cross-site requests.
+- **Locked local API.** The app binds to `127.0.0.1` and every API request needs a random
+  per-install token, so other programs and users on your computer can't spend your API credits.
+  The launcher signs your browser in with an HttpOnly, same-site-only cookie. Host-header checks
+  block DNS rebinding, and a required header on writes blocks cross-site requests.
+- **Private database.** PostgreSQL listens on `127.0.0.1` only, with a random per-install password
+  kept in the git-ignored `.env`.
 - **Sandboxed code.** Agent-written code runs in throwaway Docker containers: no network, read-only
   root, non-root user, CPU, memory and time limits. Each run needs your authorization.
 - **Untrusted inputs.** Uploaded documents are treated as data, wrapped so agents can't be steered by
   instructions inside them.
 - **Server-side permissions.** Tool permissions are enforced on the server, so an agent can't grant
   itself new powers.
+- **Supply chain.** Docker images are pinned by digest, dependencies are audited, and Dependabot
+  proposes updates. See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ## How it works
 
@@ -206,6 +213,8 @@ Issues and pull requests are welcome. Please run `./agentoffice test` before sub
 |---|---|---|
 | `AGENTOFFICE_PORT` | `8765` | UI and API port (always bound to 127.0.0.1) |
 | `AGENTOFFICE_DATABASE_URL` | local Docker Postgres | Database connection |
+| `AGENTOFFICE_DB_PASSWORD` | random, in `.env` | Password for the local Docker Postgres |
+| `AGENTOFFICE_API_TOKEN` | random, in `data/api-token` | Local API token (send as `Authorization: Bearer …`) |
 | `AGENTOFFICE_DATA_DIR` | `./data` | Uploads, exports, sandbox scratch |
 | `AGENTOFFICE_CREDENTIAL_BACKEND` | `auto` | `keyring` or `encrypted_file` |
 | `AGENTOFFICE_CREDENTIAL_PASSPHRASE` | — | Unlock secret for the encrypted-file fallback |

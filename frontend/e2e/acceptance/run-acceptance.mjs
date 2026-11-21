@@ -32,8 +32,11 @@ const note = (step, ok, detail = "") => {
   log.push(e);
   console.log(`[${e.t}s] ${ok === true ? "PASS" : ok === false ? "FAIL" : "INFO"} ${step}${detail ? " — " + detail : ""}`);
 };
+// The local API token (data/api-token) is read from disk and never printed or saved.
+const TOKEN = process.env.AGENTOFFICE_API_TOKEN
+  ?? fs.readFileSync(new URL("../../../data/api-token", import.meta.url), "utf8").trim();
 const api = async (p) => {
-  const r = await fetch(`${BASE}/api${p}`);
+  const r = await fetch(`${BASE}/api${p}`, { headers: { Authorization: `Bearer ${TOKEN}` } });
   if (!r.ok) throw new Error(`${p}: ${r.status} ${await r.text()}`);
   return r.json();
 };
@@ -86,7 +89,7 @@ let pid = null;
 try {
   // 1-2. Launch + health
   const h = await api("/health");
-  await page.goto(BASE);
+  await page.goto(`${BASE}/api/auth/session?token=${encodeURIComponent(TOKEN)}`);
   await page.getByRole("heading", { name: "Your consulting office" }).waitFor();
   note("1-2 app launched; frontend and backend healthy", h.ok === true, `${BASE}`);
   const boot = await api("/bootstrap");
