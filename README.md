@@ -4,11 +4,13 @@
 
 # AgentOffice
 
-**Hire an AI consulting team. Approve the plan. Watch them work. Get reviewed, versioned deliverables.**
+**Your own AI project team, without the overhead of managing one.**
 
-A local-first, no-code workspace where a Project Manager agent plans, specialist agents do the work,
-a QA agent reviews it, and *you* stay the client: approving scope, answering questions, changing
-requirements mid-project, and controlling spend. All of it is visualized live in a pixel-art office.
+Build your AI team, delegate complex work, manage changing requirements, and turn ideas into
+deliverables through an intuitive visual workspace. A Project Manager agent plans, specialist agents
+do the work, a QA agent reviews it, and *you* stay the client: approving scope, answering questions,
+changing requirements mid-project, and controlling spend. It's local-first and no-code, and it all
+plays out live in a pixel-art office.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
@@ -26,11 +28,32 @@ requirements mid-project, and controlling spend. All of it is visualized live in
 
 ---
 
+## Who it's for
+
+AgentOffice is for people with ambitious projects who need a team, not necessarily people whose job
+title involves managing one:
+
+- **Solo founders and entrepreneurs:** validating ideas, researching competitors, writing MVP specs,
+  building prototypes.
+- **University students:** capstones, product-management assignments, research and software projects.
+- **Product managers and business analysts:** requirements, user stories, process analysis,
+  stakeholder changes and deliverable review.
+
+They all already use AI. The hard part is coordination:
+- context is spread across separate chats;
+- nobody clearly owns each piece;
+- outputs go unreviewed;
+- every requirement change means working out by hand what is now wrong.
+
+AgentOffice gives that work one plan, named owners, reviewed and versioned deliverables, and change
+handling that knows what depends on what.
+
 ## Why AgentOffice?
 
-Most multi-agent tools are developer frameworks: node graphs, YAML and Python. AgentOffice is for the
-people who actually manage projects, such as **product managers, business analysts, founders and
-consultants**. It translates agent engineering into management language:
+Visual agents and multi-model teams aren't unique on their own. What AgentOffice focuses on is
+**managing complex, evolving projects** with clear responsibility, costs, deliverables and changes.
+It translates agent engineering into project language, and the office is the window onto that work,
+not the point of it:
 
 | Engineering concept | In AgentOffice |
 |---|---|
@@ -50,7 +73,8 @@ are labelled as estimates, and a QA "pass" is described as an opinion rather tha
 **🧑‍💼 Build a team.** Hire from 8 built-in roles (PM, Business Analyst, Research Analyst, Architect,
 Developer, QA, Technical Writer, Data Analyst) or create your own. Give **each agent its own model**:
 Claude for planning, a cheaper model for drafting, whatever fits the budget. Start from templates for
-PRDs, competitive analysis, prototypes or process analysis, or describe any goal.
+product requirements, competitive analysis, software prototypes or business process analysis, or
+describe any goal. A template only presets the team and deliverables; every project runs on the same engine.
 
 **📋 Approve the plan.** The PM turns your brief into a statement of work: tasks, dependencies,
 assignees, acceptance criteria, risks and tool needs. Every task cites the requirement IDs (R-001…) it
@@ -180,7 +204,7 @@ flowchart LR
   and each artifact version records its requirements and exact inputs, which powers change impact
   and the stale-delivery gate.
 
-More detail: [Architecture](docs/ARCHITECTURE.md) ·
+More detail: [Product strategy](docs/PRODUCT_STRATEGY.md) · [Architecture](docs/ARCHITECTURE.md) ·
 [Engineering report](docs/ENGINEERING_REPORT.md) ·
 [Open-source assessment](docs/OPEN_SOURCE_FOUNDATION_ASSESSMENT.md).
 
@@ -193,13 +217,29 @@ the official `anthropic` and `openai` SDKs, keyring and cryptography.
 
 ## Status and roadmap
 
-AgentOffice is a working v1, verified end-to-end with OpenAI. Known gaps and next steps:
+AgentOffice is a working v1, verified end-to-end with OpenAI. The full picture, including what is
+implemented, partial and planned for each audience, is in the
+**[product strategy](docs/PRODUCT_STRATEGY.md)**.
 
+**Implemented:**
+- the visual office and task board;
+- configurable teams with per-agent models and permissions;
+- change-aware rework with a stale-delivery gate;
+- versioned, traceable, QA-reviewed deliverables;
+- enforced budgets and cost breakdowns.
+
+**Planned:**
+- [ ] Estimated rework cost on the change-impact card, and an estimated plan cost before approval
+- [ ] Academic assistance levels (brainstorm, critique, guided learning, permitted implementation)
+      with an exportable AI-use record
+- [ ] A one-click "Autopilot" path: hire the recommended team with default models and go straight
+      to the plan (Manager-style controls already exist)
+- [ ] More starting points: validate a startup idea, MVP specification, capstone plan, rubric review
 - [ ] Live verification with Anthropic models (the adapter is contract-tested only)
 - [ ] Tighter requirement linking by the PM (broad links limit how much work a change can preserve)
 - [ ] Section-level lineage (today a change reworks a whole document)
 - [ ] A built-in self-review step for single-agent teams
-- [ ] Web research beyond Anthropic's built-in search
+- [ ] Web research beyond Anthropic's built-in search (under evaluation)
 
 Issues and pull requests are welcome. Please run `./agentoffice test` before submitting.
 
