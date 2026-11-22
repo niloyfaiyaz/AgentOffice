@@ -19,7 +19,7 @@ plays out live in a pixel-art office.
 ![Phaser](https://img.shields.io/badge/Phaser-3-8A2BE2)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![BYOK](https://img.shields.io/badge/BYOK-Anthropic%20%7C%20OpenAI-black)
-![Tests](https://img.shields.io/badge/tests-77%20backend%20·%2015%20UI%20·%203%20e2e-brightgreen)
+![Tests](https://img.shields.io/badge/tests-78%20backend%20·%2016%20UI%20·%203%20e2e-brightgreen)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <img src="docs/images/office-working.png" width="860" alt="The pixel-art office: Bea is working, Archie has just been assigned a task, and the status board shows the run state and spend" />
@@ -91,7 +91,8 @@ agent to see its current task, tokens, spend, hand-offs, and the raw conversatio
 2. The PM proposes which requirements it **replaces**.
 3. AgentOffice computes, from task-to-requirement links and artifact lineage, **exactly which work is
    affected**: completed work, work in progress (reworked after it finishes) and downstream tasks.
-   Everything else is kept.
+   Everything else is kept. Each affected task shows an **estimated rework cost** (from what it used
+   the first time, at its agent's current model price), totalled against your remaining budget.
 4. You confirm.
 5. A deterministic gate then **blocks delivery of any document still based on a retired requirement**.
 
@@ -226,10 +227,11 @@ implemented, partial and planned for each audience, is in the
 - configurable teams with per-agent models and permissions;
 - change-aware rework with a stale-delivery gate;
 - versioned, traceable, QA-reviewed deliverables;
+- an estimated rework cost on every requirement change;
 - enforced budgets and cost breakdowns.
 
 **Planned:**
-- [ ] Estimated rework cost on the change-impact card, and an estimated plan cost before approval
+- [ ] An estimated plan cost before approval
 - [ ] Academic assistance levels (brainstorm, critique, guided learning, permitted implementation)
       with an exportable AI-use record
 - [ ] A one-click "Autopilot" path: hire the recommended team with default models and go straight

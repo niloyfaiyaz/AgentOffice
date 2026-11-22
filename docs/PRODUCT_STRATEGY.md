@@ -153,7 +153,7 @@ record designed for submission. See gap G3.
 - **Costs:** per-model cost tier and price source, and a breakdown by agent, task and model. There is
   **no forward-looking estimate** of what a plan will cost (gap G2).
 
-### C. Change-aware orchestration (Implemented, cost preview missing)
+### C. Change-aware orchestration (Implemented)
 - **Versioned requirements** with stable IDs (R-001…), explicit supersession and history.
 - **Impact proposal:** the PM proposes which requirements a change replaces, and the client confirms
   it on an approval card.
@@ -164,8 +164,13 @@ record designed for submission. See gap G3.
 - **Targeted rework** for completed, in-flight and downstream tasks.
 - **Every change needs approval.** There is no "significant change" threshold, so even small changes
   ask for approval.
-- **Missing:** an *estimated* rework cost before approval (gap G1). Actual rework cost is recorded
-  per task afterwards.
+- **Estimated rework cost** on the change card (G1, implemented 2026-11-21):
+  - Each affected task's recorded token usage is re-priced at its agent's current model. No model
+    call is made.
+  - The card totals the tasks the client selects and compares the total with the remaining budget.
+  - In-flight tasks and tasks without cost data make the total a lower bound, and the card says so.
+    Unpriced models are reported as unknown, not guessed.
+  - Actual rework cost is still recorded per task afterwards.
 
 Evidence (real OpenAI models):
 - In the [acceptance report](AGENTOFFICE_E2E_ACCEPTANCE_REPORT.md), a mid-project change cost about
@@ -199,7 +204,7 @@ These are recommendations, not commitments. None of them is implemented in this 
 
 | ID | Gap | Segment(s) | Size | Priority |
 |---|---|---|---|---|
-| G1 | **Rework cost estimate on the change-impact card.** Base it on the affected tasks' recorded usage. The data already exists | All | Small | **High** |
+| G1 | ~~Rework cost estimate on the change-impact card~~ **Done 2026-11-21:** recorded usage re-priced at the current model, totalled against the remaining budget | All | Small | Done |
 | G2 | **Plan cost estimate before approval.** Base it on task count, assigned models and historical usage, with a clear "estimate" label | All, especially founders and students | Medium | **High** |
 | G3 | **Academic assistance levels and an AI-use record.** The levels are brainstorming, critique, guided learning and permitted implementation. They would be a project-level setting that restricts tools and instructions server-side, plus an exportable log of what the AI did | Students | Medium | **High** for the student segment |
 | G4 | **Autopilot path.** Hire the recommended team with default models in one click, then go straight to the plan. Same engine | Founders, students | Small to medium | Medium |
@@ -222,10 +227,10 @@ this strategy update.**
 |---|---|---|---|
 | **Founder:** MVP spec for a small SaaS product | The same template, team and change engine produces a usable spec with no customization | The acceptance run built a full requirements package for a small product (a CSV import assistant) with real models, including QA rework | **Supported.** *Product Requirements* fits it. A dedicated MVP template (G6) and a plan cost estimate (G2) would make it smoother |
 | **Student:** a multi-deliverable assignment with explicit AI-use limits | The same engine can run it, with limits enforced and recorded | Multi-deliverable plans and QA against criteria are proven. AI-use limits can only be stated in the project constraints | **Partially supported.** Running the work fits the architecture. Enforced limits and a record need G3, which is a project setting on the same engine, not a new architecture |
-| **PM/BA:** a stakeholder change in an existing project | Impact is targeted, unaffected work is kept, and stale outputs are blocked | [Change-management validation](CHANGE_MANAGEMENT_VALIDATION.md): real-model runs, deterministic deliverable checks, and blind rubric scoring | **Supported**, the strongest evidence. A rework cost preview (G1) is the main missing piece |
+| **PM/BA:** a stakeholder change in an existing project | Impact is targeted, unaffected work is kept, and stale outputs are blocked | [Change-management validation](CHANGE_MANAGEMENT_VALIDATION.md): real-model runs, deterministic deliverable checks, and blind rubric scoring | **Supported**, the strongest evidence. The rework cost preview (G1) is now implemented |
 
 **Conclusion:** all three scenarios run on one architecture. None of them needs a separate execution
-path. The gaps are configuration and surfacing work (G1–G6), not a rebuild.
+path. The gaps are configuration and surfacing work (G2–G6), not a rebuild.
 
 **Validation still to do:**
 - **Usability:** an unassisted first-run test with one person from each segment, measuring time

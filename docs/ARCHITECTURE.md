@@ -87,7 +87,10 @@ A client **change request**:
 
 Agents never see the raw brief. They get active items, plus an explicit "NO LONGER VALID" list naming
 what replaced each retired item. Editing the brief never resurrects a retired rule. The same card selects
-completed and in-flight tasks for targeted rework.
+completed and in-flight tasks for targeted rework, and shows each one's **estimated rework cost**
+(`services.rework_estimate`): the task's recorded usage re-priced at its agent's current model, with
+no model call. The card totals the selection against the remaining budget, and marks lower bounds
+and unpriced models.
 
 ### Traceability and stale-artifact protection
 
