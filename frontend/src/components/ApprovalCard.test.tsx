@@ -105,4 +105,25 @@ describe("ApprovalCard", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({ decision: "approve", option: "rework" });
   });
+
+  it("totals the estimated rework cost of the selected tasks and flags budget overrun", () => {
+    const est = (usd: string | null, partial = false, basis = "current_model") => ({ usd, calls: 2, partial, basis });
+    renderCard({ ...base, kind: "requirement_change", title: "Confirm the impact of R-010", payload: {
+      change_ref: "R-010", candidates: [], budget_remaining_usd: "0.0500",
+      tasks: [
+        { id: "t1", title: "Validation rules", status: "completed", impact: "direct", action: "rework", reason: "implements R-009", estimate: est("0.0300") },
+        { id: "t2", title: "Error report", status: "completed", impact: "downstream", action: "rework", reason: "uses output", estimate: est("0.0400") },
+        { id: "t3", title: "Import UI", status: "running", impact: "direct", action: "rework_after", reason: "implements R-009", estimate: est(null, true, "no_usage") },
+      ] } });
+    const box = screen.getByLabelText("Estimated rework cost");
+    // t1 + t2 + t3 are proposed; t3 has no usage yet, so the total is a lower bound and over budget.
+    expect(box).toHaveTextContent("at least $0.0700 for 3 tasks");
+    expect(box).toHaveTextContent("$0.0500 left in the project budget (the rework may need more budget)");
+    expect(box).toHaveTextContent("1 selected task has no usable cost data");
+    expect(screen.getByText(/est\. ~\$0\.0300/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Error report/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Import UI/ }));
+    expect(box).toHaveTextContent("about $0.0300 for 1 task");
+    expect(box).not.toHaveTextContent("may need more budget");
+  });
 });

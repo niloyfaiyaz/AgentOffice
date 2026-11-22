@@ -419,6 +419,57 @@ async def test_requirement_change_during_run_targets_completed_tasks(client, fak
     assert any(r["kind"] == "change" for r in reqs)
 
 
+async def test_G1_change_card_estimates_rework_cost_from_recorded_usage(client, fake):
+    """G1 (MOCKED-PROVIDER): each task offered for rework carries an ESTIMATED cost, computed from the
+    task's recorded usage re-priced at its agent's current model (no model call), and the card
+    reports the remaining project budget. Unpriced models say so instead of guessing."""
+    from app import services
+    from app.models import ModelConfiguration, ProjectAgent
+
+    gate = {"stop": True}
+
+    def w(ctx):
+        if ctx["title"] == "Task B" and gate["stop"]:
+            return [call("ask_client", question="Proceed with B?")]
+        return simple_worker(ctx)
+
+    fake(planner_then([T("A", "Bea"), T("B", "Bea", ["A"])], w))
+    proj = make_project(client, roles=("project_manager", "business_analyst"))
+    client.put(f"/api/projects/{proj['id']}/budget", json={"budget_usd": 2})
+    run = await start_and_approve(client, proj["id"])
+    await drive(run["id"])
+    client.post(f"/api/projects/{proj['id']}/messages",
+                json={"content": "Target enterprise customers instead", "intent": "requirement_change"})
+    [chg] = pending(client, proj["id"], "requirement_change")
+    a = next(t for t in chg["payload"]["tasks"] if t["title"] == "Task A")
+    # The scripted test model has no prices: the estimate is reported as unknown, never invented.
+    assert a["estimate"]["usd"] is None and a["estimate"]["basis"] == "unpriced" and a["estimate"]["calls"] >= 1
+    assert Decimal(chg["payload"]["budget_remaining_usd"]) == Decimal(2)
+    b = next(t for t in chg["payload"]["tasks"] if t["title"] == "Task B")
+    assert b["estimate"]["partial"] is True  # still running: usage so far is a lower bound
+
+    with SessionLocal() as db:
+        db.add(ModelConfiguration(provider="scripted-test", model_id="scripted-v1", display_name="Scripted (priced for test)",
+                                  input_price_per_mtok=Decimal("2"), output_price_per_mtok=Decimal("10")))
+        db.commit()
+        task = db.get(Task, uuid.UUID(a["id"]))
+        rows = db.query(UsageRecord).filter(UsageRecord.task_id == task.id).all()
+        expected = (sum(r.input_tokens for r in rows) * Decimal(2) + sum(r.output_tokens for r in rows) * Decimal(10)) / Decimal(1_000_000)
+        est = services.rework_estimate(db, task)
+        assert est["basis"] == "current_model" and est["partial"] is False and est["calls"] == len(rows)
+        assert Decimal(est["usd"]) == expected.quantize(Decimal("0.0001"))
+        # A model change since the original work is reflected in the estimate.
+        agent = db.get(ProjectAgent, task.assigned_agent_id)
+        db.add(ModelConfiguration(provider="scripted-test", model_id="scripted-v2", display_name="Pricier",
+                                  input_price_per_mtok=Decimal("4"), output_price_per_mtok=Decimal("20")))
+        agent.model_id = "scripted-v2"
+        db.flush()
+        assert Decimal(services.rework_estimate(db, task)["usd"]) == (expected * 2).quantize(Decimal("0.0001"))
+        db.rollback()
+        db.query(ModelConfiguration).filter(ModelConfiguration.provider == "scripted-test").delete()
+        db.commit()
+
+
 async def test_qa_review_cycles_are_bounded(client, fake):
     def w(ctx):
         if "submit_review" in ctx["tools"] and "submit_review" not in ctx["done"]:

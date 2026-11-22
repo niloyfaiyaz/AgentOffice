@@ -106,6 +106,42 @@ function SowEditor({ a, agents }: { a: Approval; agents: Agent[] }) {
   );
 }
 
+type Estimate = { usd: string | null; calls: number; partial: boolean; basis: string };
+
+export function estimateLabel(e: Estimate): string {
+  if (e.usd === null) return e.basis === "unpriced" ? "est. cost unknown (model unpriced)" : "est. cost unknown (no usage yet)";
+  return `est. ${e.partial ? "≥ " : "~"}${money(Number(e.usd))}`;
+}
+
+// G1: estimated rework cost for the tasks the client has selected, from each task's recorded usage
+// re-priced at its agent's current model. Shown as an estimate, never as a quote.
+export function ReworkEstimate({ tasks, selected, remaining }: { tasks: any[]; selected: string[]; remaining?: string | null }) {
+  const chosen = tasks.filter((t) => selected.includes(t.id));
+  const priced = chosen.filter((t) => t.estimate?.usd != null);
+  const total = priced.reduce((s, t) => s + Number(t.estimate.usd), 0);
+  const unknown = chosen.length - priced.length;
+  const lowerBound = unknown > 0 || priced.some((t) => t.estimate.partial);
+  const left = remaining == null ? null : Number(remaining);
+  return (
+    <div className="rounded border border-line bg-panel p-2 text-xs" aria-label="Estimated rework cost">
+      <div>
+        <span className="font-medium">Estimated rework cost:</span>{" "}
+        {chosen.length === 0 ? "nothing selected" : <>{lowerBound ? "at least " : "about "}{money(total)} for {chosen.length} task{chosen.length === 1 ? "" : "s"}</>}
+        {left !== null && chosen.length > 0 && (
+          <span className={total > left ? " font-medium text-bad" : " text-muted"}>
+            {" "}· {money(Math.max(left, 0))} left in the project budget{total > left ? " (the rework may need more budget)" : ""}
+          </span>
+        )}
+      </div>
+      <p className="mt-1 text-muted">
+        Based on what each task used the first time, priced at its agent's current model.
+        {unknown > 0 && ` ${unknown} selected task${unknown === 1 ? " has" : "s have"} no usable cost data and ${unknown === 1 ? "isn't" : "aren't"} counted.`}
+        {" "}Rework often costs less because it revises existing work, but it can take more calls. Budgets are still enforced before every call.
+      </p>
+    </div>
+  );
+}
+
 export function ApprovalCard({ a, agents, compact }: { a: Approval; agents: Agent[]; compact?: boolean }) {
   const decide = useDecide(a);
   const [text, setText] = useState("");
@@ -212,11 +248,13 @@ export function ApprovalCard({ a, agents, compact }: { a: Approval; agents: Agen
                       <Badge tone="info">in progress — reworked after it finishes</Badge>}
                     {t.impact === "uncertain" && <Badge tone="warn">needs your confirmation</Badge>}
                     {t.action === "if_selected" && <Badge>only if that requirement is replaced</Badge>}
+                    {t.estimate && <span className="text-xs text-muted"> · {estimateLabel(t.estimate)}</span>}
                   </span>
                 </label>
               ))}
             </fieldset>
           )}
+          {!!a.payload.tasks?.length && <ReworkEstimate tasks={a.payload.tasks} selected={sel} remaining={a.payload.budget_remaining_usd} />}
           {!!a.payload.artifacts_at_risk?.length && (
             <div className="text-xs"><span className="font-medium">Deliverables that become stale:</span>{" "}
               {a.payload.artifacts_at_risk.map((x: any) => `${x.name} v${x.version}`).join(", ")}</div>

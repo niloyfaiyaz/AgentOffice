@@ -89,13 +89,13 @@ export function ProjectSwitcher({ pid, base }: { pid: string; base: string }) {
 function Locked() {
   return (
     <div className="flex min-h-full items-center justify-center p-6">
-      <div className="max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="max-w-md rounded-lg border border-line bg-panel p-6 shadow-sm">
         <h1 className="text-lg font-semibold">AgentOffice is locked</h1>
-        <p className="mt-2 text-sm text-slate-600">
+        <p className="mt-2 text-sm text-muted">
           This browser isn't signed in to your local AgentOffice. To open it, run this in the AgentOffice folder:
         </p>
-        <pre className="mt-3 rounded bg-slate-100 p-2 text-sm">./agentoffice open</pre>
-        <p className="mt-3 text-xs text-slate-500">
+        <pre className="mt-3 rounded bg-panel2 p-2 text-sm">./agentoffice open</pre>
+        <p className="mt-3 text-xs text-muted">
           The sign-in token stops other programs and users on this computer from using your API keys.
         </p>
       </div>

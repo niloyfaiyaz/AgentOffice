@@ -1125,6 +1125,13 @@ async def post_message(pid: str, body: MessageIn, db: Session = Depends(get_db))
                 for a in stale_docs:
                     a.stale, a.stale_reason = True, f"[note] predates requirement change {change.ref}; request a revision"
             proposed_refs = [c["ref"] for c in proposal["candidates"] if c["proposed"]]
+            # G1: an estimated rework cost per listed task (from recorded usage; no model call), so the
+            # card can total whatever the client selects and compare it with the remaining budget.
+            for e in impacted:
+                t = db.get(Task, uuid.UUID(e["id"]))
+                if t is not None:
+                    e["estimate"] = services.rework_estimate(db, t)
+            remaining = services.budget_remaining(db, p.id)
             if proposal["candidates"] or impacted:
                 services.create_approval(
                     db, project_id=p.id, run_id=run.id if run else None, kind="requirement_change",
@@ -1136,7 +1143,8 @@ async def post_message(pid: str, body: MessageIn, db: Session = Depends(get_db))
                              "candidates": proposal["candidates"], "proposal_method": proposal["method"],
                              "proposal_rationale": proposal["rationale"], "tasks": impacted,
                              "impact_by_candidate": impact_by_candidate, "preserved_tasks": preserved,
-                             "artifacts_at_risk": at_risk})
+                             "artifacts_at_risk": at_risk,
+                             "budget_remaining_usd": str(remaining.quantize(Decimal("0.0001"))) if remaining is not None else None})
             parts = [f"Recorded the change as {change.ref}."]
             if proposed_refs:
                 who = "I" if proposal["method"] == "project_manager" else "A keyword check"

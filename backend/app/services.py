@@ -163,6 +163,46 @@ def task_spend(db: Session, task_id: uuid.UUID) -> Decimal:
     return Decimal(v or 0)
 
 
+def rework_estimate(db: Session, task: Task) -> dict[str, Any]:
+    """ESTIMATED cost of reworking ``task``, from what the task actually used.
+
+    The task's recorded token usage is re-priced at its agent's CURRENT model (so a model change
+    since the original work is reflected). It is a reference figure, not a quote: a rework revises
+    existing output and is often cheaper, but it can also take more calls. For a task that is still
+    running, usage so far is a lower bound. Nothing here calls a model.
+    """
+    from .pricing import cost_of
+    from .providers.base import Usage
+
+    rows = list(db.scalars(select(UsageRecord).where(UsageRecord.task_id == task.id)))
+    agent = db.get(ProjectAgent, task.assigned_agent_id) if task.assigned_agent_id else None
+    out: dict[str, Any] = {"usd": None, "calls": len(rows), "partial": task.status != "completed",
+                           "model": agent.model_id if agent else None, "basis": "current_model"}
+    if not rows:
+        out["basis"] = "no_usage"  # nothing recorded yet (not started, or no model calls)
+        return out
+    usage = Usage(input_tokens=sum(r.input_tokens for r in rows), output_tokens=sum(r.output_tokens for r in rows),
+                  cache_read_tokens=sum(r.cache_read_tokens for r in rows),
+                  cache_write_tokens=sum(r.cache_write_tokens for r in rows),
+                  other={"web_search_requests": sum(int((r.other_usage or {}).get("web_search_requests", 0)) for r in rows)})
+    cost = cost_of(model_config(db, agent.provider, agent.model_id) if agent else None, usage)
+    if cost is None:
+        recorded = [r.estimated_cost_usd for r in rows if r.estimated_cost_usd is not None]
+        if not recorded:
+            out["basis"] = "unpriced"
+            return out
+        cost, out["basis"] = sum(recorded, Decimal(0)), "recorded"  # current model unpriced: use what was recorded
+    out["usd"] = str(Decimal(cost).quantize(Decimal("0.0001")))
+    return out
+
+
+def budget_remaining(db: Session, project_id: uuid.UUID) -> Optional[Decimal]:
+    b = get_budget(db, project_id)
+    if b.budget_usd is None:
+        return None
+    return Decimal(b.budget_usd) - project_spend(db, project_id)
+
+
 def model_config(db: Session, provider: Optional[str], model_id: Optional[str]) -> Optional[ModelConfiguration]:
     if not provider or not model_id:
         return None
