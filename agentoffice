@@ -115,7 +115,9 @@ stop() {
 
 case "${1:-start}" in
   start) start ;;
-  open) open_ui ;;
+  open)
+    # If the app isn't running, start it (start opens the browser itself).
+    if curl -sf "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then open_ui; else start; fi ;;
   stop) stop "${2:-}" ;;
   restart) stop; start ;;
   status) for p in server worker; do running "$p" && say "$p: running (pid $(cat "$RUN/$p.pid"))" || say "$p: stopped"; done ;;
