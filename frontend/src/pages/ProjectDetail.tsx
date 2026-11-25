@@ -50,7 +50,7 @@ export function ProjectDetailPage({ pid }: { pid: string }) {
   );
 }
 
-function RunControls({ s }: { s: ProjectState }) {
+export function RunControls({ s }: { s: ProjectState }) {
   const qc = useQueryClient();
   const nav = useNavigate();
   const pid = s.project.id;
@@ -61,7 +61,7 @@ function RunControls({ s }: { s: ProjectState }) {
   const start = useMutation({ mutationFn: () => api.post(`/projects/${pid}/runs`, {}), onSuccess: done });
   const control = useMutation({ mutationFn: (a: string) => api.post(`/runs/${run!.id}/${a}`), onSuccess: done });
   const archive = useMutation({ mutationFn: () => api.post(`/projects/${pid}/${s.project.archived ? "unarchive" : "archive"}`), onSuccess: done });
-  const del = useMutation({ mutationFn: () => api.del(`/projects/${pid}`), onSuccess: () => { qc.invalidateQueries({ queryKey: ["projects"] }); nav("/projects"); } });
+  const del = useMutation({ mutationFn: () => api.del(`/projects/${pid}`), onSuccess: () => { qc.invalidateQueries({ queryKey: ["projects"] }); nav("/"); } });
   const hasPm = s.agents.some((a) => a.is_orchestrator);
   return (
     <Card>
@@ -151,26 +151,7 @@ function Overview({ s }: { s: ProjectState }) {
             </dl>
           )}
         </Card>
-        <Card title="Requirements on record">
-          <p className="mb-2 text-xs text-muted">Your brief split into items. This list is what agents follow; items replaced by a change
-            are kept for history and no longer followed.</p>
-          <ul className="space-y-1.5 text-sm">
-            {s.requirements.filter((r) => r.status === "active").map((r) => (
-              <li key={r.id}><span className="font-mono text-xs text-muted">{r.ref}</span> <Badge tone={r.kind === "change" ? "info" : "muted"}>{r.kind.replace("_", " ")}</Badge> <span>{r.text}</span></li>
-            ))}
-          </ul>
-          {s.requirements.some((r) => r.superseded_by) && (
-            <details className="mt-3 text-sm">
-              <summary className="cursor-pointer text-muted">Replaced requirements ({s.requirements.filter((r) => r.superseded_by).length})</summary>
-              <ul className="mt-1 space-y-1">
-                {s.requirements.filter((r) => r.superseded_by).map((r) => (
-                  <li key={r.id} className="text-muted"><span className="font-mono text-xs">{r.ref}</span>{" "}
-                    <span className="line-through">{r.text}</span> <Badge tone="warn">replaced by {r.superseded_by}</Badge></li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </Card>
+        <RequirementsCard s={s} />
       </div>
     </div>
   );
@@ -210,7 +191,7 @@ function TaskCard({ t, agents, tasks }: { t: Task; agents: Agent[]; tasks: Task[
   );
 }
 
-function PlanBoard({ s }: { s: ProjectState }) {
+export function PlanBoard({ s }: { s: ProjectState }) {
   if (!s.tasks.length) return <Empty>Tasks appear here once you approve a statement of work.</Empty>;
   return (
     <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
@@ -275,7 +256,7 @@ function Chat({ s }: { s: ProjectState }) {
   );
 }
 
-function BudgetForm({ pid, budget }: { pid: string; budget: Budget }) {
+export function BudgetForm({ pid, budget }: { pid: string; budget: Budget }) {
   const qc = useQueryClient();
   const [f, setF] = useState({
     budget_usd: budget.budget_usd ?? "", approval_threshold_usd: budget.approval_threshold_usd ?? "",
@@ -312,6 +293,31 @@ function BudgetForm({ pid, budget }: { pid: string; budget: Budget }) {
           <ErrorText error={save.error} />
         </div>
       </form>
+    </Card>
+  );
+}
+
+export function RequirementsCard({ s }: { s: ProjectState }) {
+  return (
+    <Card title="Requirements on record">
+          <p className="mb-2 text-xs text-muted">Your brief split into items. This list is what agents follow; items replaced by a change
+            are kept for history and no longer followed.</p>
+          <ul className="space-y-1.5 text-sm">
+            {s.requirements.filter((r) => r.status === "active").map((r) => (
+              <li key={r.id}><span className="font-mono text-xs text-muted">{r.ref}</span> <Badge tone={r.kind === "change" ? "info" : "muted"}>{r.kind.replace("_", " ")}</Badge> <span>{r.text}</span></li>
+            ))}
+          </ul>
+          {s.requirements.some((r) => r.superseded_by) && (
+            <details className="mt-3 text-sm">
+              <summary className="cursor-pointer text-muted">Replaced requirements ({s.requirements.filter((r) => r.superseded_by).length})</summary>
+              <ul className="mt-1 space-y-1">
+                {s.requirements.filter((r) => r.superseded_by).map((r) => (
+                  <li key={r.id} className="text-muted"><span className="font-mono text-xs">{r.ref}</span>{" "}
+                    <span className="line-through">{r.text}</span> <Badge tone="warn">replaced by {r.superseded_by}</Badge></li>
+                ))}
+              </ul>
+            </details>
+          )}
     </Card>
   );
 }

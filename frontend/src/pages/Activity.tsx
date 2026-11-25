@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { ProjectSwitcher } from "../App";
 import { api, type AgentEvent } from "../api";
 import { useProjectStream } from "../hooks";
 import { Badge, Card, Empty, inputCls } from "../ui";
@@ -31,7 +30,7 @@ export function ActivityPage({ pid }: { pid: string }) {
   const shown = all.filter((e) => (!GROUPS[group].length || GROUPS[group].includes(e.type)) && (!agent || e.agent_id === agent));
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-semibold">Activity</h1><ProjectSwitcher pid={pid} base="/activity" /></div>
+      <div className="flex flex-wrap items-center gap-3"><h2 className="text-lg font-semibold">Activity</h2></div>
       <p className="text-sm text-muted">The complete, non-animated record of what the team did. Every office animation is derived from these events.</p>
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <Card title={`Events (${shown.length})`} actions={

@@ -25,7 +25,9 @@ def project(p: Project) -> dict:
     return {"id": s(p.id), "name": p.name, "objective": p.objective, "description": p.description,
             "deliverables": p.deliverables, "constraints": p.constraints, "success_criteria": p.success_criteria,
             "deadline": p.deadline.isoformat() if p.deadline else None, "status": p.status, "archived": p.archived,
-            "template_key": p.template_key, "created_at": p.created_at.isoformat(), "updated_at": p.updated_at.isoformat()}
+            "template_key": p.template_key, "origin": p.origin,
+            "brief_status": (p.brief or {}).get("status"),
+            "created_at": p.created_at.isoformat(), "updated_at": p.updated_at.isoformat()}
 
 
 def model(m: ModelConfiguration) -> dict:

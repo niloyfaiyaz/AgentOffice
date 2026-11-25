@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import * as RD from "@radix-ui/react-dialog";
 import { STATUS_LABEL, type Avatar } from "./api";
 import { CHAR_H, CHAR_W, drawFrame } from "./office/sprites";
 
@@ -79,31 +80,38 @@ export function ErrorText({ error }: { error: unknown }) {
   return <p role="alert" className="text-sm text-bad">{error instanceof Error ? error.message : String(error)}</p>;
 }
 
+/** Accessible modal (Radix Dialog: focus trap, Escape, focus restore, scroll lock). */
 export function Dialog({ open, title, onClose, children, wide }: { open: boolean; title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.activeElement as HTMLElement | null;
-    ref.current?.querySelector<HTMLElement>("input,textarea,select,button")?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      prev?.focus();
-    };
-  }, [open, onClose]);
-  if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4" onMouseDown={onClose}>
-      <div ref={ref} role="dialog" aria-modal="true" aria-label={title} onMouseDown={(e) => e.stopPropagation()}
-        className={`mt-10 w-full ${wide ? "max-w-4xl" : "max-w-xl"} rounded-lg border border-line bg-panel p-5 shadow-2xl`}>
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold">{title}</h2>
-          <Button variant="ghost" aria-label="Close" onClick={onClose}>✕</Button>
-        </div>
-        {children}
-      </div>
-    </div>
+    <RD.Root open={open} onOpenChange={(o) => !o && onClose()}>
+      <RD.Portal>
+        <RD.Overlay className="fixed inset-0 z-50 bg-black/60" />
+        <RD.Content aria-describedby={undefined}
+          className={`fixed left-1/2 top-10 z-50 max-h-[calc(100vh-5rem)] w-[calc(100%-2rem)] -translate-x-1/2 overflow-y-auto ${wide ? "max-w-4xl" : "max-w-xl"} rounded-lg border border-line bg-panel p-5 text-ink shadow-2xl`}>
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <RD.Title className="text-lg font-semibold">{title}</RD.Title>
+            <RD.Close asChild><Button variant="ghost" aria-label="Close">✕</Button></RD.Close>
+          </div>
+          {children}
+        </RD.Content>
+      </RD.Portal>
+    </RD.Root>
+  );
+}
+
+/** Side drawer (Radix Dialog). Used for the agent inspection panel. */
+export function Sheet({ open, title, onClose, children }: { open: boolean; title: string; onClose: () => void; children: ReactNode }) {
+  return (
+    <RD.Root open={open} onOpenChange={(o) => !o && onClose()}>
+      <RD.Portal>
+        <RD.Overlay className="fixed inset-0 z-50 bg-black/40" />
+        <RD.Content aria-describedby={undefined}
+          className="fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto border-l border-line bg-panel p-4 text-ink shadow-2xl">
+          <RD.Title className="sr-only">{title}</RD.Title>
+          {children}
+        </RD.Content>
+      </RD.Portal>
+    </RD.Root>
   );
 }
 

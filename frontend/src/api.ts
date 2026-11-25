@@ -10,8 +10,47 @@ export interface Avatar { skin?: string; hair?: string; shirt?: string; pants?: 
 export interface Project {
   id: string; name: string; objective: string; description: string; deliverables: string[];
   constraints: string; success_criteria: string; deadline: string | null; status: string; archived: boolean;
-  template_key: string | null; created_at: string; updated_at: string;
-  estimated_spend_usd?: number; pending_approvals?: number; agents?: number;
+  template_key: string | null; created_at: string; updated_at: string; origin?: string; brief_status?: string | null;
+  estimated_spend_usd?: number; pending_approvals?: number; agents?: number; run_status?: string | null; needs_input?: number;
+}
+
+export type Basis = "client_stated" | "ai_proposed" | "client_edited";
+export interface BriefItem { id: string; text: string; basis: Basis }
+export const BRIEF_LISTS = ["requirements", "deliverables", "scope_in", "scope_out", "constraints", "assumptions",
+  "success_criteria", "open_questions"] as const;
+export type BriefList = (typeof BRIEF_LISTS)[number];
+export interface Brief {
+  status: "discovering" | "ready" | "manual" | "confirmed"; project_type: string; rounds: number; method: string | null;
+  name: BriefItem | null; objective: BriefItem | null; audience: BriefItem | null;
+  questions: { id: string; question: string; why: string; options: string[] }[];
+  recommended_team: { role_key: string; responsibility: string; reason: string }[];
+  removed: string[]; history: { at: string; by: string; summary: string }[];
+  requirements: BriefItem[]; deliverables: BriefItem[]; scope_in: BriefItem[]; scope_out: BriefItem[];
+  constraints: BriefItem[]; assumptions: BriefItem[]; success_criteria: BriefItem[]; open_questions: BriefItem[];
+}
+export interface Msg {
+  id: string; sender: "user" | "agent" | "system"; agent_id: string | null; content: string; intent?: string;
+  data: Record<string, any>; created_at: string; task_id?: string | null; channel?: string;
+}
+export interface DiscoveryView {
+  project: Project; brief: Brief; messages: Msg[]; pm: Agent | null; provider_ready: boolean; usable_providers: string[];
+}
+export interface ModelInfo {
+  provider: string; model_id: string; display_name: string; cost_tier: string; priced: boolean;
+  input_price_per_mtok: number | null; output_price_per_mtok: number | null;
+  typical_task: { usd: number; samples: number } | null; ready: boolean;
+}
+export interface RecommendedRole {
+  role_key: string; name: string; role: string; avatar: Avatar; responsibility: string; reason: string; tools: string[];
+  model: ModelInfo; hired: boolean; agent_id: string | null;
+}
+export interface InboxItem {
+  id: string; type: string; kind: string; category: string; title: string; project_id: string; project_name: string;
+  agent_id: string | null; agent_name: string | null; task_id: string | null; created_at: string;
+}
+export interface Thread {
+  id: string; kind: "team" | "agent" | "discovery"; title: string; agent_id: string | null; role?: string; pending: number;
+  last: Msg | null;
 }
 
 export interface Agent {
@@ -65,7 +104,7 @@ export interface Budget {
 export interface ProjectState {
   project: Project; budget: Budget; agents: Agent[]; runs: Run[]; current_run: Run | null; tasks: Task[];
   pending_approvals: Approval[]; requirements: Requirement[];
-  estimated_spend_usd: number; last_event_seq: number;
+  estimated_spend_usd: number; last_event_seq: number; last_update: AgentEvent | null; brief: Brief | null;
 }
 
 export interface Requirement {

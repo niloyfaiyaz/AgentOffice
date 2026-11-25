@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { ProjectSwitcher } from "../App";
 import { api, money, type Budget } from "../api";
 import { ModelPricing } from "../components/ModelPricing";
 import { Badge, Card, Empty } from "../ui";
@@ -36,7 +35,7 @@ export function CostsPage({ pid }: { pid: string }) {
   const pct = c?.budget.budget_usd ? Math.min(100, (c.estimated_total_usd / c.budget.budget_usd) * 100) : null;
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-semibold">Costs</h1><ProjectSwitcher pid={pid} base="/costs" /></div>
+      <div className="flex flex-wrap items-center gap-3"><h2 className="text-lg font-semibold">Costs</h2></div>
       {c && <p role="note" className="rounded-md border border-line bg-panel2 p-3 text-xs text-muted">{c.disclaimer}</p>}
       <div className="grid gap-4 md:grid-cols-3">
         <Card title="Estimated spend"><p className="text-3xl font-semibold">{money(c?.estimated_total_usd)}</p></Card>

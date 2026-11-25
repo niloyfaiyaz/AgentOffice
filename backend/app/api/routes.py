@@ -102,10 +102,12 @@ def _template(t: ProjectTemplate) -> dict:
 
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db)):
-    projects = list(db.scalars(select(Project).where(Project.archived.is_(False)).order_by(Project.updated_at.desc())))
+    projects = list(db.scalars(select(Project).where(Project.archived.is_(False), Project.origin == "user")
+                               .order_by(Project.updated_at.desc())))
     pend = dict(db.execute(select(ApprovalRequest.project_id, func.count()).where(ApprovalRequest.status == "pending")
                            .group_by(ApprovalRequest.project_id)).all())
-    recent = list(db.scalars(select(AgentEvent).order_by(AgentEvent.seq.desc()).limit(25)))
+    recent = list(db.scalars(select(AgentEvent).where(AgentEvent.project_id.in_([p.id for p in projects]))
+                             .order_by(AgentEvent.seq.desc()).limit(25)))
     names = {p.id: p.name for p in db.scalars(select(Project))}
     return {
         "projects": [{**ser.project(p), "pending_approvals": pend.get(p.id, 0),
@@ -427,12 +429,28 @@ class ProjectIn(BaseModel):
     deadline: Optional[date] = None
     template_key: Optional[str] = None
     budget_usd: Optional[float] = None
+    origin: Optional[str] = None
+
+
+def _project_summary(db: Session, p: Project, pend: dict) -> dict:
+    run = services.latest_run(db, p.id)
+    return {**ser.project(p), "estimated_spend_usd": float(services.project_spend(db, p.id)),
+            "pending_approvals": pend.get(p.id, 0), "agents": len(services.team(db, p.id)),
+            "run_status": run.status if run else None,
+            "needs_input": pend.get(p.id, 0) + (1 if (p.brief or {}).get("questions") and p.status == "draft" else 0)}
 
 
 @router.get("/projects")
-def list_projects(archived: bool = False, db: Session = Depends(get_db)):
-    q = select(Project).where(Project.archived.is_(archived)).order_by(Project.updated_at.desc())
-    return [{**ser.project(p), "estimated_spend_usd": float(services.project_spend(db, p.id))} for p in db.scalars(q)]
+def list_projects(archived: bool = False, include_test: bool = False, q: str = "", db: Session = Depends(get_db)):
+    """Projects for the switcher and My Projects. Synthetic test projects are hidden unless asked for."""
+    stmt = select(Project).where(Project.archived.is_(archived)).order_by(Project.updated_at.desc())
+    if not include_test:
+        stmt = stmt.where(Project.origin == "user")
+    if q.strip():
+        stmt = stmt.where(Project.name.ilike(f"%{q.strip()}%"))
+    pend = dict(db.execute(select(ApprovalRequest.project_id, func.count()).where(ApprovalRequest.status == "pending")
+                           .group_by(ApprovalRequest.project_id)).all())
+    return [_project_summary(db, p, pend) for p in db.scalars(stmt)]
 
 
 @router.post("/projects")
@@ -441,7 +459,15 @@ def create_project(body: ProjectIn, db: Session = Depends(get_db)):
         raise HTTPException(422, "Project name is required")
     if not (body.objective or "").strip():
         raise HTTPException(422, "Describe the objective")
-    p = Project(name=body.name.strip(), objective=body.objective.strip(), description=body.description or "",
+    origin = body.origin or "user"
+    if origin not in ("user", "acceptance_test", "scripted_test"):
+        raise HTTPException(422, "Unknown origin")
+    if origin == "user":
+        try:
+            services.ensure_name_available(db, body.name)
+        except services.NameTaken as e:
+            raise HTTPException(409, str(e)) from e
+    p = Project(origin=origin, name=body.name.strip(), objective=body.objective.strip(), description=body.description or "",
                 deliverables=[d.strip() for d in (body.deliverables or []) if d.strip()],
                 constraints=body.constraints or "", success_criteria=body.success_criteria or "",
                 deadline=body.deadline, template_key=body.template_key, status="draft")
@@ -473,6 +499,15 @@ def update_project(pid: str, body: ProjectIn, db: Session = Depends(get_db)):
         services.get_budget(db, p.id).budget_usd = _money(data["budget_usd"])
     if not p.name.strip():
         raise HTTPException(422, "Project name is required")
+    if "name" in data and p.origin == "user" and not p.archived:
+        try:
+            services.ensure_name_available(db, p.name, exclude_id=p.id)
+        except services.NameTaken as e:
+            raise HTTPException(409, str(e)) from e
+        if (p.brief or {}).get("name") is not None:
+            from .. import discovery
+
+            p.brief = {**p.brief, "name": discovery.item(p.name, "client_edited")}
     services.sync_core_requirements(db, p)
     run = services.latest_run(db, p.id)
     if run is not None and run.status not in RUN_TERMINAL:
@@ -496,6 +531,11 @@ def archive_project(pid: str, db: Session = Depends(get_db)):
 @router.post("/projects/{pid}/unarchive")
 def unarchive_project(pid: str, db: Session = Depends(get_db)):
     p = _get(db, Project, pid)
+    if p.origin == "user":
+        try:
+            services.ensure_name_available(db, p.name, exclude_id=p.id)
+        except services.NameTaken as e:
+            raise HTTPException(409, f"{e} Rename this project before restoring it.") from e
     p.archived = False
     db.commit()
     return ser.project(p)
@@ -510,23 +550,7 @@ def delete_project(pid: str, db: Session = Depends(get_db)):
     run = services.latest_run(db, p.id)
     if run is not None and run.status not in RUN_TERMINAL and run.lease_owner:
         raise HTTPException(409, "Cancel the active run before deleting")
-    for m in (AgentEvent, Message, UsageRecord, ReviewFinding, AgentHandoff, ApprovalRequest):
-        db.query(m).filter(m.project_id == p.id).delete(synchronize_session=False)
-    from ..models import UserDecision
-
-    db.query(UserDecision).filter(UserDecision.project_id == p.id).delete(synchronize_session=False)
-    task_ids = [t for t in db.scalars(select(Task.id).where(Task.project_id == p.id))]
-    if task_ids:
-        db.query(TaskExecution).filter(TaskExecution.task_id.in_(task_ids)).delete(synchronize_session=False)
-        from ..models import TaskDependency
-
-        db.query(TaskDependency).filter(TaskDependency.task_id.in_(task_ids)).delete(synchronize_session=False)
-    art_ids = [a for a in db.scalars(select(Artifact.id).where(Artifact.project_id == p.id))]
-    if art_ids:
-        db.query(ArtifactVersion).filter(ArtifactVersion.artifact_id.in_(art_ids)).delete(synchronize_session=False)
-    db.query(Artifact).filter(Artifact.project_id == p.id).delete(synchronize_session=False)
-    db.query(Task).filter(Task.project_id == p.id).delete(synchronize_session=False)
-    db.delete(p)
+    services.purge_project(db, p)
     db.commit()
     for d in (settings.uploads_dir / pid, settings.exports_dir / pid):
         shutil.rmtree(d, ignore_errors=True)
@@ -819,7 +843,31 @@ def agent_detail(pid: str, aid: str, db: Session = Depends(get_db)):
                               func.count()).where(UsageRecord.agent_id == a.id)).one()
     blockers = list(db.scalars(select(ApprovalRequest).where(ApprovalRequest.agent_id == a.id, ApprovalRequest.status == "pending")))
     current = db.get(Task, a.current_task_id) if a.current_task_id else None
+    focus = current or _open_task(db, a)
+    waiting_on, deps = [], []
+    if focus is not None:
+        names = {x.id: x.display_name for x in services.team(db, a.project_id)}
+        for d in services.dependencies(db, focus.id):
+            deps.append({"id": str(d.id), "title": d.title, "status": d.status, "agent": names.get(d.assigned_agent_id)})
+            if d.status not in ("completed", "skipped"):
+                waiting_on.append({"kind": "teammate", "task": d.title, "agent": names.get(d.assigned_agent_id),
+                                   "status": d.status})
+        if focus.status == "waiting_subtask":
+            for sub in db.scalars(select(Task).where(Task.parent_task_id == focus.id,
+                                                     Task.status.notin_(["completed", "skipped", "cancelled"]))):
+                waiting_on.append({"kind": "teammate", "task": sub.title, "agent": names.get(sub.assigned_agent_id),
+                                   "status": sub.status})
+    if blockers:
+        waiting_on += [{"kind": "client", "task": b.title, "agent": None, "status": "pending"} for b in blockers]
+    latest = None
+    if arts:
+        art = max(arts, key=lambda x: x.updated_at)
+        lv = services.latest_version(db, art.id)
+        latest = {"artifact_id": str(art.id), "name": art.name, "version": art.current_version,
+                  "summary": (lv.summary if lv else "") or art.summary, "updated_at": art.updated_at.isoformat()}
     return {"agent": ser.agent(db, a), "current_task": ser.task(db, current) if current else None,
+            "focus_task": ser.task(db, focus) if focus else None, "waiting_on": waiting_on, "dependencies": deps,
+            "latest_output": latest,
             "recent_events": [events.event_to_dict(e) for e in evs], "tasks": [ser.task(db, t) for t in tasks],
             "artifacts": [ser.artifact(db, x) for x in arts], "handoffs": [ser.handoff(h) for h in hos],
             "usage": {"input_tokens": int(usage[0]), "output_tokens": int(usage[1]), "calls": int(usage[2]),
@@ -892,6 +940,11 @@ def project_state(pid: str, db: Session = Depends(get_db)):
     last = db.scalar(select(func.max(AgentEvent.seq)).where(AgentEvent.project_id == p.id)) or 0
     reqs = services.active_requirements(db, p.id)
     b = services.get_budget(db, p.id)
+    from .workspace import INFO_EVENTS
+
+    notable = db.scalar(select(AgentEvent).where(AgentEvent.project_id == p.id, AgentEvent.type.in_(
+        INFO_EVENTS | {"task_completed", "artifact_written", "approval_requested", "plan_proposed", "run_started",
+                       "brief_updated", "rework_requested"})).order_by(AgentEvent.seq.desc()))
     db.commit()
     return {
         "project": ser.project(p), "budget": _budget(b),
@@ -901,6 +954,8 @@ def project_state(pid: str, db: Session = Depends(get_db)):
         "requirements": [requirements.to_dict(db, r) for r in reqs]
                         + [requirements.to_dict(db, r) for r in requirements.superseded(db, p.id)],
         "estimated_spend_usd": float(services.project_spend(db, p.id)), "last_event_seq": last,
+        "last_update": events.event_to_dict(notable) if notable else None,
+        "brief": (p.brief or None),
     }
 
 
@@ -1037,13 +1092,31 @@ def task_action(tid: str, action: str, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 # Client <-> Project Manager messages
 # ---------------------------------------------------------------------------
-INTENTS = {"question", "requirement_change", "task_feedback", "scope_change", "cancel"}
+INTENTS = {"auto", "question", "requirement_change", "task_feedback", "scope_change", "cancel"}
+CONSEQUENTIAL = {"requirement_change", "scope_change", "cancel", "approval"}
+_HEUR = [
+    ("cancel", re.compile(r"\b(cancel|stop) (the )?(run|project|work)\b", re.I)),
+    ("requirement_change", re.compile(r"\b(instead|no longer|change (the|a|this) requirement|must now|should now|"
+                                      r"actually,? (it|we|they) (should|must|need))\b", re.I)),
+    ("scope_change", re.compile(r"\b(also (add|build|include)|add (a|another) (new )?deliverable|expand the scope|out of scope)\b", re.I)),
+    ("approval", re.compile(r"^\s*(approve[ds]?|looks good,? go ahead|go ahead|reject(ed)?|i approve)\b", re.I)),
+]
+
+
+def classify_message(text: str) -> str:
+    """Deterministic first pass (no model): a hint only. Consequential intents are never applied
+    from a chat message; the client confirms them through the structured mechanisms."""
+    for intent, rx in _HEUR:
+        if rx.search(text):
+            return intent
+    return "question"
 
 
 class MessageIn(BaseModel):
     content: str = Field(min_length=1, max_length=20000)
-    intent: str = "question"
+    intent: str = "auto"
     task_id: Optional[str] = None
+    agent_id: Optional[str] = None  # a direct message to one agent (default: the project thread with the PM)
 
 
 def _msg(m: Message) -> dict:
@@ -1053,10 +1126,39 @@ def _msg(m: Message) -> dict:
 
 
 @router.get("/projects/{pid}/messages")
-def list_messages(pid: str, channel: str = "client", db: Session = Depends(get_db)):
+def list_messages(pid: str, channel: str = "client", agent_id: Optional[str] = None, db: Session = Depends(get_db)):
     p = _get(db, Project, pid)
-    q = select(Message).where(Message.project_id == p.id, Message.channel == channel).order_by(Message.created_at)
-    return [_msg(m) for m in db.scalars(q.limit(500))]
+    q = select(Message).where(Message.project_id == p.id, Message.channel == channel)
+    if agent_id:
+        q = q.where(Message.agent_id == _uuid(agent_id))
+    return [_msg(m) for m in db.scalars(q.order_by(Message.created_at).limit(500))]
+
+
+@router.get("/projects/{pid}/threads")
+def list_threads(pid: str, db: Session = Depends(get_db)):
+    """The project's conversations: the team thread (the PM is the default contact), one direct
+    thread per agent, and the discovery conversation. Each lists open questions from that agent."""
+    p = _get(db, Project, pid)
+    pend = list(db.scalars(select(ApprovalRequest).where(ApprovalRequest.project_id == p.id,
+                                                         ApprovalRequest.status == "pending")))
+    last = {}
+    for m in db.scalars(select(Message).where(Message.project_id == p.id).order_by(Message.created_at)):
+        key = "team" if m.channel == "client" else f"agent:{m.agent_id}" if m.channel == "direct" else m.channel
+        last[key] = m
+    out = [{"id": "team", "kind": "team", "title": "Project team", "agent_id": None,
+            "pending": sum(1 for a in pend if a.kind != "clarification" or a.agent_id is None
+                           or (services.orchestrator(db, p.id) and a.agent_id == services.orchestrator(db, p.id).id)),
+            "last": _msg(last["team"]) if "team" in last else None}]
+    for a in services.team(db, p.id):
+        if a.is_orchestrator:
+            continue
+        k = f"agent:{a.id}"
+        out.append({"id": k, "kind": "agent", "title": a.display_name, "agent_id": str(a.id), "role": a.role,
+                    "pending": sum(1 for x in pend if x.agent_id == a.id), "last": _msg(last[k]) if k in last else None})
+    if "discovery" in last:
+        out.append({"id": "discovery", "kind": "discovery", "title": "Project discovery", "agent_id": None,
+                    "pending": 0, "last": _msg(last["discovery"])})
+    return out
 
 
 @router.post("/projects/{pid}/messages")
@@ -1067,12 +1169,43 @@ async def post_message(pid: str, body: MessageIn, db: Session = Depends(get_db))
     run = services.latest_run(db, p.id)
     active = run is not None and run.status not in RUN_TERMINAL
     pm = services.orchestrator(db, p.id)
-    um = Message(project_id=p.id, run_id=run.id if run else None, sender="user", channel="client", intent=body.intent,
-                 content=body.content, task_id=_uuid(body.task_id) if body.task_id else None)
+    target = _get(db, ProjectAgent, body.agent_id) if body.agent_id else None
+    if target is not None and target.project_id != p.id:
+        raise HTTPException(404, "Not found")
+    direct = target is not None and not target.is_orchestrator
+    speaker = target if direct else pm
+    channel = "direct" if direct else "client"
+    um = Message(project_id=p.id, run_id=run.id if run else None, sender="user", channel=channel, intent=body.intent,
+                 content=body.content, task_id=_uuid(body.task_id) if body.task_id else None,
+                 agent_id=target.id if direct else None)
     db.add(um)
     reply: Optional[str] = None
+    reply_data: dict = {}
     try:
-        if body.intent == "cancel":
+        if body.intent == "auto":
+            # 1) An open question from this agent: the message is the answer (it updates that record).
+            q = select(ApprovalRequest).where(ApprovalRequest.project_id == p.id, ApprovalRequest.status == "pending",
+                                              ApprovalRequest.kind == "clarification")
+            q = q.where(ApprovalRequest.agent_id == speaker.id) if speaker is not None else q
+            open_q = list(db.scalars(q.order_by(ApprovalRequest.created_at)))
+            if len(open_q) == 1 and classify_message(body.content) == "question":
+                ap = open_q[0]
+                decisions.decide(db, ap, "answer", {"decision": "answer", "answer": body.content})
+                um.intent = "answer"
+                um.data = {"approval_id": str(ap.id)}
+                reply = f"Answer recorded for “{ap.title}”. The task continues with it."
+                reply_data = {"answered_approval_id": str(ap.id), "system": True}
+            else:
+                reply, detected, reply_data = await _agent_answer(db, p, speaker, body.content, direct=direct)
+                um.intent = "question" if detected not in CONSEQUENTIAL else detected
+                # 2) A direct instruction to a specialist with work in progress is recorded on that task.
+                if direct and detected in ("question", "task_instruction") and speaker is not None:
+                    t = _open_task(db, speaker)
+                    if t is not None and detected == "task_instruction":
+                        t.context_notes = [*t.context_notes, f"From the client (message): {body.content}"]
+                        um.task_id = t.id
+                        reply_data["recorded_on_task"] = {"id": str(t.id), "title": t.title}
+        elif body.intent == "cancel":
             if not active:
                 raise HTTPException(400, "There is no active run to cancel")
             decisions.request_control(db, run, "cancel")
@@ -1199,10 +1332,87 @@ async def post_message(pid: str, body: MessageIn, db: Session = Depends(get_db))
     except decisions.DecisionError as e:
         raise HTTPException(400, str(e)) from e
     if reply:
-        db.add(Message(project_id=p.id, run_id=run.id if run else None, sender="agent" if pm else "system",
-                       agent_id=pm.id if pm else None, channel="client", intent=body.intent, content=reply))
+        system_note = reply_data.get("system", False)
+        db.add(Message(project_id=p.id, run_id=run.id if run else None,
+                       sender="system" if (system_note or not speaker) else "agent",
+                       agent_id=speaker.id if speaker else None, channel=channel, intent=um.intent, content=reply,
+                       data=reply_data))
     db.commit()
-    return {"reply": reply}
+    return {"reply": reply, "intent": um.intent, "data": reply_data}
+
+
+def _open_task(db: Session, agent: ProjectAgent) -> Optional[Task]:
+    if agent.current_task_id:
+        t = db.get(Task, agent.current_task_id)
+        if t is not None and t.status not in ("completed", "failed", "cancelled", "skipped"):
+            return t
+    return db.scalar(select(Task).where(Task.assigned_agent_id == agent.id,
+                                        Task.status.in_(["pending", "ready", "running", "paused", "waiting_approval",
+                                                         "waiting_subtask"])).order_by(Task.sort_order))
+
+
+REPLY_TOOL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "reply": {"type": "string", "description": "Your answer to the client, brief and accurate."},
+        "detected_intent": {"type": "string", "enum": ["question", "discussion", "clarification", "task_instruction",
+                                                       "requirement_change", "scope_change", "approval", "cancel"],
+                            "description": "What the client's message is, operationally."},
+        "rationale": {"type": "string"},
+    },
+    "required": ["reply", "detected_intent"],
+}
+
+
+async def _agent_answer(db: Session, p: Project, agent: Optional[ProjectAgent], text: str,
+                        direct: bool) -> tuple[str, str, dict]:
+    """The agent answers from recorded project status and classifies the message. A consequential
+    intent is returned as a SUGGESTION for the client to confirm; nothing is applied from chat."""
+    from ..providers.base import ToolSpec
+
+    heuristic = classify_message(text)
+    if agent is None:
+        return "Hire a Project Manager to ask questions about the project.", heuristic, {}
+    run = services.latest_run(db, p.id)
+    tasks = services.run_tasks(db, run.id) if run else []
+    status = "\n".join(f"- [{t.status}] {t.title}" + (" (yours)" if t.assigned_agent_id == agent.id else "")
+                       for t in tasks) or "(no tasks yet)"
+    arts = "\n".join(f"- {a.name} v{a.current_version}" for a in services.project_artifacts(db, p.id)) or "(none)"
+    ctx = (f"Project: {p.name}\nRequirements:\n{requirements.context_block(db, p.id)}\n"
+           f"Run status: {run.status if run else 'not started'}\nTasks:\n{status}\nDeliverables:\n{arts}\n\n"
+           f"Client message: {text}")
+    role = "the client's project manager" if not direct else f"the team's {agent.role}"
+    tool = ToolSpec("reply_to_client", "Reply to the client and classify their message.", REPLY_TOOL_SCHEMA)
+    detected, data = heuristic, {}
+    try:
+        res = await call_model(db, project=p, run=None, agent=agent, task=None, purpose="chat",
+                               system=f"You are {agent.display_name}, {role}. Answer briefly and accurately from the "
+                                      "project status given. Do not invent progress. Never claim to have changed "
+                                      "requirements, scope or approvals: the client confirms those separately. "
+                                      "Call reply_to_client once.",
+                               messages=[{"role": "user", "content": [{"type": "text", "text": ctx}]}], tools=[tool])
+    except ProviderError as e:
+        return f"(I couldn't answer: {e.user_message()})", heuristic, _suggest(heuristic)
+    if isinstance(res, Blocked):
+        return f"(Not answered: {res.block.detail})", heuristic, _suggest(heuristic)
+    call = next((c for c in res.tool_calls if c.name == "reply_to_client"), None)
+    answer = (call.input.get("reply") if call else None) or res.text or "(no answer)"
+    if call and call.input.get("detected_intent"):
+        detected = call.input["detected_intent"]
+        data["classified_by"] = "test provider (not AI)" if agent.provider == "scripted-test" else "model"
+    if detected not in CONSEQUENTIAL and heuristic in CONSEQUENTIAL:
+        detected = heuristic  # be conservative: surface the structured route if either signal says so
+    data.update(_suggest(detected))
+    return answer, detected, data
+
+
+def _suggest(intent: str) -> dict:
+    labels = {"requirement_change": "This looks like a requirement change. Record it as a change request so its impact "
+                                    "is analysed and confirmed?",
+              "scope_change": "This looks like a scope change. Send it for your confirmation before re-planning?",
+              "cancel": "Do you want to cancel the current run?",
+              "approval": "Approvals are given on the decision cards, not by chat. Open the pending decisions?"}
+    return {"suggestion": {"intent": intent, "text": labels[intent]}} if intent in labels else {}
 
 
 async def _pm_answer(db: Session, p: Project, pm: Optional[ProjectAgent], question: str) -> str:

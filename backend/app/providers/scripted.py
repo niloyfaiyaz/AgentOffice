@@ -53,6 +53,14 @@ class ScriptedProvider(Provider):
         if "submit_work_plan" in names:
             calls = [self._plan(_first_text(messages))]
             text = "Here is the proposed plan."
+        elif "update_project_brief" in names:
+            calls = [self._brief(_first_text(messages))]
+            text = ""
+        elif "reply_to_client" in names:
+            calls = [self._reply(_first_text(messages))]
+            text = ""
+        elif not names:
+            text, calls = "Scripted reply (test provider, not AI): message received.", []
         else:
             text, calls = self._task_step(messages, names)
         in_chars = len(system) + len(json.dumps(messages))
@@ -89,6 +97,59 @@ class ScriptedProvider(Provider):
                 "assumptions": ["Scripted test run"], "risks": ["None (test)"], "tool_requirements": [],
                 "clarification_questions": []}
         return ToolCall(self._id(), "submit_work_plan", plan)
+
+    def _brief(self, ctx: str) -> ToolCall:
+        """Discovery: round 1 asks two scripted questions; round 2 (after an answer) is ready."""
+        convo = ctx.split("Conversation so far:", 1)[-1].split("Current brief", 1)[0]
+        client = [l[len("CLIENT: "):] for l in convo.splitlines() if l.startswith("CLIENT: ")]
+        idea = client[0] if client else "a project"
+        answered = len(client) > 1
+        words = re.findall(r"[A-Za-z0-9]+", idea)
+        software = bool(re.search(r"\b(app|web|website|software|prototype|api|tool|platform)\b", idea, re.I))
+        team = ([{"role_key": "software_architect", "responsibility": "Architecture and technical design",
+                  "reason": "The idea is a software product."},
+                 {"role_key": "developer", "responsibility": "Build the prototype", "reason": "Working software is a deliverable."},
+                 {"role_key": "qa_reviewer", "responsibility": "Review deliverables against acceptance criteria",
+                  "reason": "Independent QA."}] if software else
+                [{"role_key": "research_analyst", "responsibility": "Research and analysis", "reason": "Research-led project."},
+                 {"role_key": "technical_writer", "responsibility": "Write the report", "reason": "A written deliverable."},
+                 {"role_key": "qa_reviewer", "responsibility": "Review the report", "reason": "Independent review."}])
+        out = {
+            "message": ("Scripted test provider (not AI): " + ("Thanks, that's enough to draft the plan." if answered else
+                        "I've drafted a brief from your description. Two questions before I plan.")),
+            "name": " ".join(w.capitalize() for w in words[:4]) or "Scripted project",
+            "project_type": "software" if software else "research",
+            "objective": idea.split(".")[0][:300], "objective_basis": "client_stated",
+            "audience": "Friends planning a trip together" if "friend" in idea.lower() else "General users",
+            "audience_basis": "ai_proposed",
+            "scope_in": [{"text": "Core user journey described by the client", "basis": "client_stated"}],
+            "scope_out": [{"text": "Payments and bookings", "basis": "ai_proposed"}],
+            "deliverables": [{"text": "Requirements document", "basis": "ai_proposed"},
+                             {"text": "Technical design" if software else "Research report", "basis": "ai_proposed"}],
+            "requirements": [{"text": s.strip(), "basis": "client_stated"} for s in re.split(r"[,.;]| and ", idea)
+                             if len(s.strip().split()) >= 2][:4],
+            "constraints": [], "success_criteria": [{"text": "The client can review every deliverable", "basis": "ai_proposed"}],
+            "assumptions": ["Web first; mobile later"] if software else ["Public sources only"],
+            "open_questions": [],
+            "questions": [] if answered else [
+                {"question": "Who will use it first?", "why": "Decides the intended audience and scope.",
+                 "options": ["Just my friends", "Anyone", "I don't know"]},
+                {"question": "Do you need a working prototype or only documents?", "why": "Changes the deliverables.",
+                 "options": ["Prototype", "Documents only"]}],
+            "recommended_team": team, "ready": answered,
+        }
+        if answered:
+            out["requirements"].append({"text": f"Client answer: {client[-1][:200]}", "basis": "client_stated"})
+        return ToolCall(self._id(), "update_project_brief", out)
+
+    def _reply(self, ctx: str) -> ToolCall:
+        msg = ctx.rsplit("Client message:", 1)[-1].strip().lower()
+        intent = ("requirement_change" if re.search(r"\b(instead|no longer|change the requirement|must now)\b", msg)
+                  else "scope_change" if re.search(r"\b(also add|add a new deliverable|expand)\b", msg)
+                  else "question")
+        return ToolCall(self._id(), "reply_to_client", {
+            "reply": "Scripted reply (test provider, not AI): noted.", "detected_intent": intent,
+            "rationale": "scripted keyword rule"})
 
     def _task_step(self, messages, names) -> tuple[str, list[ToolCall]]:
         brief = _first_text(messages)

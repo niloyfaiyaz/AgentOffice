@@ -14,6 +14,9 @@ export interface OfficeBridge {
   onSelect(id: string): void;
   selectedId(): string | null;
   busyDesks(): Set<number>; // desks whose agent is actively typing (monitor glow)
+  // Short plain-text status under each name (e.g. "waiting: Bea"), derived from recorded task state,
+  // so a state is never conveyed by colour or animation alone.
+  tagFor?(id: string): string;
 }
 
 const C = {
@@ -22,7 +25,7 @@ const C = {
   rug: 0x51466b, table: 0x9c6b3f, board: 0xf4f1e6, boardFrame: 0x5b4a3a, counter: 0xb08968, couch: 0x6c4f8f,
 };
 
-interface CharObjs { sprite: Phaser.GameObjects.Image; name: Phaser.GameObjects.Text; icon: Phaser.GameObjects.Text; ring: Phaser.GameObjects.Graphics; key: string }
+interface CharObjs { sprite: Phaser.GameObjects.Image; name: Phaser.GameObjects.Text; icon: Phaser.GameObjects.Text; tag: Phaser.GameObjects.Text; ring: Phaser.GameObjects.Graphics; key: string }
 
 export class OfficeScene extends Phaser.Scene {
   private bridge!: OfficeBridge;
@@ -111,6 +114,7 @@ export class OfficeScene extends Phaser.Scene {
     obj?.sprite.destroy();
     obj?.name.destroy();
     obj?.icon.destroy();
+    obj?.tag.destroy();
     obj?.ring.destroy();
     if (!this.textures.exists(key)) {
       const tex = this.textures.addCanvas(key, sheet(st.avatar))!;
@@ -126,8 +130,12 @@ export class OfficeScene extends Phaser.Scene {
       .text(0, 0, "", { fontFamily: "ui-monospace, Menlo, monospace", fontSize: "9px", color: "#111",
         backgroundColor: "#ffffff", padding: { x: 2, y: 0 }, resolution: 4 })
       .setOrigin(0.5, 1);
+    const tag = this.add
+      .text(0, 0, "", { fontFamily: "ui-monospace, Menlo, monospace", fontSize: "6px", color: "#e6ebf5",
+        backgroundColor: "#1d2433cc", padding: { x: 2, y: 0 }, resolution: 4 })
+      .setOrigin(0.5, 0);
     const ring = this.add.graphics();
-    obj = { sprite, name, icon, ring, key };
+    obj = { sprite, name, icon, tag, ring, key };
     this.chars.set(id, obj);
     return obj;
   }
@@ -154,12 +162,14 @@ export class OfficeScene extends Phaser.Scene {
       o.icon.setText(v.icon ?? "").setVisible(!!v.icon).setPosition(x, y - CHAR_H - 9).setDepth(4001);
       o.icon.setBackgroundColor(c.status === "failed" || c.status === "blocked" ? "#ff8a80" :
         c.status === "completed" ? "#b9f6ca" : c.status === "waiting_for_client" ? "#ffe082" : "#ffffff");
+      const tag = this.bridge.tagFor?.(c.id) ?? "";
+      o.tag.setText(tag).setVisible(!!tag).setPosition(x, y + 6).setDepth(4000);
       o.ring.clear();
       if (selected === c.id) o.ring.lineStyle(1, 0xffd166, 1).strokeEllipse(x, y + 4, 18, 6).setDepth(y + 9);
     }
     for (const [id, o] of this.chars) {
       if (!seen.has(id)) {
-        o.sprite.destroy(); o.name.destroy(); o.icon.destroy(); o.ring.destroy();
+        o.sprite.destroy(); o.name.destroy(); o.icon.destroy(); o.tag.destroy(); o.ring.destroy();
         this.chars.delete(id);
       }
     }

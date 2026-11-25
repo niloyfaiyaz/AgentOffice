@@ -26,6 +26,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Index,
 )
+from sqlalchemy import event, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -76,6 +77,17 @@ class Project(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
     archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     template_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # Normalized name for uniqueness (see app.naming); maintained automatically on flush.
+    name_key: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    # user | acceptance_test | scripted_test - non-user projects are hidden from the normal list.
+    origin: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
+    # Structured brief with per-item provenance (see app.discovery).
+    brief: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+
+    __table_args__ = (
+        Index("uq_projects_active_name", "name_key", unique=True,
+              postgresql_where=text("archived = false AND origin = 'user'")),
+    )
 
     agents: Mapped[list["ProjectAgent"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     runs: Mapped[list["ProjectRun"]] = relationship(back_populates="project", cascade="all, delete-orphan")
@@ -535,3 +547,12 @@ class ProviderCredentialReference(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="unvalidated")
     last_validated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+@event.listens_for(Project, "before_insert")
+@event.listens_for(Project, "before_update")
+def _normalize_project_name(mapper, connection, target: Project) -> None:
+    from .naming import display_name, name_key
+
+    target.name = display_name(target.name)
+    target.name_key = name_key(target.name)

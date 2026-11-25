@@ -128,6 +128,39 @@ def active_requirements(db: Session, project_id: uuid.UUID) -> list[ProjectRequi
     return requirements.active(db, project_id)
 
 
+class NameTaken(ValueError):
+    pass
+
+
+def ensure_name_available(db: Session, name: str, exclude_id: Optional[uuid.UUID] = None) -> None:
+    """Active user projects have unique names (normalized: see app.naming). Raises NameTaken."""
+    from .naming import display_name, name_key
+
+    if not display_name(name):
+        raise NameTaken("Project name is required")
+    q = select(Project).where(Project.name_key == name_key(name), Project.archived.is_(False), Project.origin == "user")
+    if exclude_id is not None:
+        q = q.where(Project.id != exclude_id)
+    other = db.scalar(q)
+    if other is not None:
+        raise NameTaken(f"You already have a project called “{other.name}”. Choose a different name "
+                        "(names are compared ignoring case and extra spaces).")
+
+
+def unique_name(db: Session, base: str) -> str:
+    """A free name derived from ``base`` (for provisional names chosen by AgentOffice, not the client)."""
+    from .naming import display_name
+
+    base = display_name(base)[:180] or "New project"
+    name, n = base, 2
+    while True:
+        try:
+            ensure_name_available(db, name)
+            return name
+        except NameTaken:
+            name, n = f"{base} ({n})", n + 1
+
+
 def sync_core_requirements(db: Session, project: Project) -> None:
     """Mirror the brief into individual requirement items (see app.requirements)."""
     from . import requirements
@@ -261,3 +294,23 @@ def latest_run(db: Session, project_id: uuid.UUID) -> Optional[ProjectRun]:
 
 def now():
     return utcnow()
+
+
+def purge_project(db: Session, p: Project) -> None:
+    """Delete a project and all its records (not committed; files are removed by the caller)."""
+    from .models import (AgentEvent, AgentHandoff, ApprovalRequest, Artifact, ArtifactVersion, Message, ReviewFinding,
+                         TaskExecution, UserDecision)
+
+    for m in (AgentEvent, Message, UsageRecord, ReviewFinding, AgentHandoff, ApprovalRequest):
+        db.query(m).filter(m.project_id == p.id).delete(synchronize_session=False)
+    db.query(UserDecision).filter(UserDecision.project_id == p.id).delete(synchronize_session=False)
+    task_ids = [t for t in db.scalars(select(Task.id).where(Task.project_id == p.id))]
+    if task_ids:
+        db.query(TaskExecution).filter(TaskExecution.task_id.in_(task_ids)).delete(synchronize_session=False)
+        db.query(TaskDependency).filter(TaskDependency.task_id.in_(task_ids)).delete(synchronize_session=False)
+    art_ids = [a for a in db.scalars(select(Artifact.id).where(Artifact.project_id == p.id))]
+    if art_ids:
+        db.query(ArtifactVersion).filter(ArtifactVersion.artifact_id.in_(art_ids)).delete(synchronize_session=False)
+    db.query(Artifact).filter(Artifact.project_id == p.id).delete(synchronize_session=False)
+    db.query(Task).filter(Task.project_id == p.id).delete(synchronize_session=False)
+    db.delete(p)

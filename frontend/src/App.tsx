@@ -1,46 +1,37 @@
 import { useQuery } from "@tanstack/react-query";
-import { type ReactNode } from "react";
-import { NavLink, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import { api, type Project } from "./api";
-import { lastProject, rememberProject, useBootstrap } from "./hooks";
-import { ActivityPage } from "./pages/Activity";
-import { CostsPage } from "./pages/Costs";
-import { DashboardPage } from "./pages/Dashboard";
-import { DeliverablesPage } from "./pages/Deliverables";
+import { NavLink, Navigate, Route, Routes, useParams } from "react-router-dom";
+import { api } from "./api";
+import { useBootstrap } from "./hooks";
+import { HomePage } from "./pages/Home";
+import { InboxPage, useInbox } from "./pages/Inbox";
 import { NewProjectPage } from "./pages/NewProject";
-import { OfficePage } from "./pages/Office";
-import { ProjectDetailPage } from "./pages/ProjectDetail";
-import { ProjectsPage } from "./pages/Projects";
 import { SettingsPage } from "./pages/Settings";
+import { SetupPage } from "./pages/Setup";
 import { TeamPage } from "./pages/Team";
-import { Empty, inputCls } from "./ui";
-
-const NAV: { to: string; label: string; scoped?: boolean }[] = [
-  { to: "/", label: "Dashboard" },
-  { to: "/office", label: "Virtual Office", scoped: true },
-  { to: "/team", label: "Team" },
-  { to: "/projects", label: "Projects" },
-  { to: "/deliverables", label: "Deliverables", scoped: true },
-  { to: "/activity", label: "Activity", scoped: true },
-  { to: "/costs", label: "Costs", scoped: true },
-  { to: "/settings", label: "Settings" },
-];
+import { Workspace } from "./pages/Workspace";
 
 function Sidebar() {
   const boot = useBootstrap();
+  const inbox = useInbox();
+  const n = inbox.data?.actions.length ?? 0;
   const providers = boot.data?.providers ?? [];
   const configured = providers.filter((p) => p.provider !== "scripted-test" && p.status === "valid");
+  const NAV = [
+    { to: "/", label: "My projects", end: true }, { to: "/new", label: "+ New project", end: true },
+    { to: "/inbox", label: "Inbox", badge: n }, { to: "/settings", label: "Settings" },
+  ];
   return (
-    <nav aria-label="Main" className="flex shrink-0 flex-col gap-1 border-b border-line bg-panel p-3 md:w-56 md:border-b-0 md:border-r">
+    <nav aria-label="Main" className="flex shrink-0 flex-col gap-1 border-b border-line bg-panel p-3 md:w-52 md:border-b-0 md:border-r">
       <div className="mb-2 flex items-center gap-2 px-2">
         <img src="/favicon.svg" alt="" className="h-6 w-6 [image-rendering:pixelated]" />
         <span className="font-semibold tracking-tight">AgentOffice</span>
       </div>
       <div className="flex flex-wrap gap-1 md:flex-col">
-        {NAV.map((n) => (
-          <NavLink key={n.to} to={n.to} end={n.to === "/"}
-            className={({ isActive }) => `rounded-md px-3 py-1.5 text-sm ${isActive ? "bg-accent text-accentInk" : "text-ink hover:bg-panel2"}`}>
-            {n.label}
+        {NAV.map((x) => (
+          <NavLink key={x.to} to={x.to} end={x.end}
+            className={({ isActive }) => `flex items-center justify-between rounded-md px-3 py-1.5 text-sm ${isActive ? "bg-accent text-accentInk" : "text-ink hover:bg-panel2"}`}>
+            {x.label}
+            {!!x.badge && <span aria-label={`${x.badge} items need you`} className="ml-2 rounded-full bg-warn px-1.5 text-xs font-semibold text-black">{x.badge}</span>}
           </NavLink>
         ))}
       </div>
@@ -52,38 +43,15 @@ function Sidebar() {
   );
 }
 
-export function ProjectPicker({ base }: { base: string }) {
-  const nav = useNavigate();
-  const q = useQuery({ queryKey: ["projects"], queryFn: () => api.get<Project[]>("/projects") });
-  const last = lastProject();
-  if (last && q.data?.some((p) => p.id === last)) return <Navigate to={`${base}/${last}`} replace />;
-  if (q.data && q.data.length === 0) return <Empty>No projects yet. Create one from the Dashboard.</Empty>;
-  return (
-    <div className="max-w-md">
-      <label className="text-sm font-medium" htmlFor="pp">Choose a project</label>
-      <select id="pp" className={`${inputCls} mt-1`} defaultValue="" onChange={(e) => e.target.value && nav(`${base}/${e.target.value}`)}>
-        <option value="" disabled>Select…</option>
-        {q.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-      </select>
-    </div>
-  );
-}
-
-function Scoped({ base, render }: { base: string; render: (pid: string) => ReactNode }) {
+/** Old feature-first URLs keep working. */
+function Legacy({ to }: { to: string }) {
   const { pid } = useParams();
-  if (!pid) return <ProjectPicker base={base} />;
-  rememberProject(pid);
-  return <>{render(pid)}</>;
+  return <Navigate to={pid ? `/p/${pid}${to}` : "/"} replace />;
 }
 
-export function ProjectSwitcher({ pid, base }: { pid: string; base: string }) {
-  const nav = useNavigate();
-  const q = useQuery({ queryKey: ["projects"], queryFn: () => api.get<Project[]>("/projects") });
-  return (
-    <select aria-label="Project" className={`${inputCls} w-auto max-w-xs`} value={pid} onChange={(e) => nav(`${base}/${e.target.value}`)}>
-      {q.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-    </select>
-  );
+function SetupRoute() {
+  const { pid } = useParams();
+  return pid ? <SetupPage key={pid} pid={pid} /> : <Navigate to="/new" replace />;
 }
 
 function Locked() {
@@ -112,16 +80,21 @@ export default function App() {
       <Sidebar />
       <main className="min-w-0 flex-1 p-4 md:p-6">
         <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/projects" element={<ProjectsPage />} />
-          <Route path="/projects/new" element={<NewProjectPage />} />
-          <Route path="/projects/:pid" element={<Scoped base="/projects" render={(pid) => <ProjectDetailPage pid={pid} />} />} />
-          <Route path="/office/:pid?" element={<Scoped base="/office" render={(pid) => <OfficePage pid={pid} />} />} />
-          <Route path="/team" element={<TeamPage />} />
-          <Route path="/deliverables/:pid?" element={<Scoped base="/deliverables" render={(pid) => <DeliverablesPage pid={pid} />} />} />
-          <Route path="/activity/:pid?" element={<Scoped base="/activity" render={(pid) => <ActivityPage pid={pid} />} />} />
-          <Route path="/costs/:pid?" element={<Scoped base="/costs" render={(pid) => <CostsPage pid={pid} />} />} />
+          <Route path="/" element={<HomePage />} />
+          <Route path="/new" element={<NewProjectPage />} />
+          <Route path="/new/:pid" element={<SetupRoute />} />
+          <Route path="/inbox" element={<InboxPage />} />
+          <Route path="/p/:pid/*" element={<Workspace />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/agents" element={<TeamPage />} />
+          <Route path="/projects" element={<Navigate to="/" replace />} />
+          <Route path="/projects/new" element={<Navigate to="/new" replace />} />
+          <Route path="/projects/:pid" element={<Legacy to="" />} />
+          <Route path="/office/:pid?" element={<Legacy to="" />} />
+          <Route path="/deliverables/:pid?" element={<Legacy to="/deliverables" />} />
+          <Route path="/activity/:pid?" element={<Legacy to="/activity" />} />
+          <Route path="/costs/:pid?" element={<Legacy to="/team" />} />
+          <Route path="/team" element={<Navigate to="/settings/agents" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

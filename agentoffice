@@ -115,6 +115,9 @@ stop() {
 
 case "${1:-start}" in
   start) start ;;
+  cleanup-test-data)
+    # Dry run by default; --mark hides confirmed test projects; --delete --yes removes flagged ones.
+    (cd "$ROOT/backend" && "$VENV/bin/python" -m app.cleanup "${@:2}") ;;
   open)
     # If the app isn't running, start it (start opens the browser itself).
     if curl -sf "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then open_ui; else start; fi ;;
@@ -126,5 +129,5 @@ case "${1:-start}" in
     setup
     (cd "$ROOT/backend" && "$VENV/bin/python" -m pytest tests/ -q </dev/null)
     (cd "$ROOT/frontend" && npx vitest run) ;;
-  *) echo "usage: ./agentoffice start|open|stop [--all]|restart|status|logs [n]|test"; exit 2 ;;
+  *) echo "usage: ./agentoffice start|open|stop [--all]|restart|status|logs [n]|test|cleanup-test-data [--mark|--delete --yes]"; exit 2 ;;
 esac

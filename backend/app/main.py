@@ -75,7 +75,10 @@ def create_app() -> FastAPI:
     async def auth_check():
         return {"ok": True}
 
+    from .api import workspace
+
     app.include_router(routes.router, prefix="/api")
+    app.include_router(workspace.router, prefix="/api")
 
     dist = settings.frontend_dist
     if dist.exists():

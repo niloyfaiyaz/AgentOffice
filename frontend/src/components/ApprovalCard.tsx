@@ -19,7 +19,11 @@ function useDecide(a: Approval) {
   });
 }
 
-function SowEditor({ a, agents }: { a: Approval; agents: Agent[] }) {
+/** The statement-of-work review. In project setup it is the "Approve & Start Project" step: ``gate``
+ * (a reason) keeps approval disabled until credentials, team and brief are in order. */
+export function SowEditor({ a, agents, gate, approveLabel = "Approve and start", onApproved }: {
+  a: Approval; agents: Agent[]; gate?: string | null; approveLabel?: string; onApproved?: () => void;
+}) {
   const boot = useBootstrap();
   const decide = useDecide(a);
   const plan0 = a.payload.plan ?? {};
@@ -100,8 +104,11 @@ function SowEditor({ a, agents }: { a: Approval; agents: Agent[] }) {
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="danger" disabled={decide.isPending} onClick={() => decide.mutate({ decision: "reject", comment })}>Reject</Button>
         <Button disabled={decide.isPending || (!comment && !Object.values(answers).some(Boolean))} onClick={() => decide.mutate({ decision: "revise", comment, answers })}>Request revision</Button>
-        <Button variant="primary" disabled={decide.isPending} onClick={() => decide.mutate({ decision: "approve", plan, approved_tools: tools, qa_review: qa && hasQa, answers, comment })}>Approve and start</Button>
+        <Button variant="primary" disabled={decide.isPending || !!gate} title={gate ?? undefined}
+          onClick={() => decide.mutate({ decision: "approve", plan, approved_tools: tools, qa_review: qa && hasQa, answers, comment },
+            { onSuccess: () => onApproved?.() })}>{approveLabel}</Button>
       </div>
+      {gate && <p className="text-right text-xs text-warn" role="status">{gate}</p>}
     </div>
   );
 }
@@ -171,7 +178,7 @@ export function ApprovalCard({ a, agents, compact }: { a: Approval; agents: Agen
       </header>
       {a.explanation && <p className="mb-3 whitespace-pre-wrap text-sm text-muted">{a.explanation}</p>}
       {a.kind === "sow" && (compact
-        ? <Link className="text-sm text-accent underline" to={`/projects/${a.project_id}`}>Review the plan on the project page</Link>
+        ? <Link className="text-sm text-accent underline" to={`/p/${a.project_id}/plan`}>Review the plan</Link>
         : <SowEditor a={a} agents={agents} />)}
       {a.kind === "clarification" && (
         <div className="space-y-2">
@@ -200,7 +207,7 @@ export function ApprovalCard({ a, agents, compact }: { a: Approval; agents: Agen
             {a.payload.reason === "max_calls" && <Field label="New max model calls"><input className={inputCls} type="number" value={budget.max_model_calls_per_run} onChange={(e) => setBudget({ ...budget, max_model_calls_per_run: e.target.value })} /></Field>}
             {a.payload.reason === "agent_limit" && <Field label="New agent limit (USD)"><input className={inputCls} inputMode="decimal" value={budget.agent_limit_usd} onChange={(e) => setBudget({ ...budget, agent_limit_usd: e.target.value })} /></Field>}
           </div>
-          {a.payload.reason === "unpriced" && <p>Enter prices for this model on the <Link to={`/costs/${a.project_id}`} className="text-accent underline">Costs page</Link>, then approve.</p>}
+          {a.payload.reason === "unpriced" && <p>Enter prices for this model on the <Link to={`/p/${a.project_id}/team`} className="text-accent underline">Costs page</Link>, then approve.</p>}
           <div className="flex gap-2">
             <Button variant="primary" onClick={() => d({ decision: "approve",
               ...(budget.budget_usd && { budget_usd: Number(budget.budget_usd) }),
@@ -298,7 +305,7 @@ export function ApprovalCard({ a, agents, compact }: { a: Approval; agents: Agen
             {!!a.payload.qa_notes?.length && <Badge title="Informational reviewer observations, not defects">{a.payload.qa_notes.length} QA note(s)</Badge>}
             <Badge>Awaiting your acceptance</Badge>
           </div>
-          <Link className="text-sm text-accent underline" to={`/deliverables/${a.project_id}`}>Review deliverables</Link>
+          <Link className="text-sm text-accent underline" to={`/p/${a.project_id}/deliverables`}>Review deliverables</Link>
           <textarea aria-label="Revision request" className={`${inputCls} h-16`} placeholder="What should be revised? (required for a revision)" value={text} onChange={(e) => setText(e.target.value)} />
           <div className="flex gap-2">
             <Button variant="primary" onClick={() => d({ decision: "approve" })}>Accept deliverables</Button>

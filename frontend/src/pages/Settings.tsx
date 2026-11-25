@@ -54,7 +54,8 @@ export function SettingsPage() {
   const b = boot.data;
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Settings</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2"><h1 className="text-2xl font-semibold">Settings</h1>
+        <a href="/settings/agents" className="text-sm text-accent underline">Agent library (reusable agent profiles)</a></div>
       <div className="grid gap-4 lg:grid-cols-2">
         {b?.providers.filter((p) => p.provider !== "scripted-test").map((p) => <ProviderCard key={p.provider} p={p} />)}
       </div>

@@ -99,7 +99,7 @@ function AgentForm({ pid, agent, onDone }: { pid: string; agent: Agent; onDone: 
   );
 }
 
-export function TeamEditor({ pid, agents, locked }: { pid: string; agents: Agent[]; locked?: boolean }) {
+export function TeamEditor({ pid, agents, locked, hideSuggestions }: { pid: string; agents: Agent[]; locked?: boolean; hideSuggestions?: boolean }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Agent | null>(null);
   const [showLibrary, setShowLibrary] = useState(false);
@@ -150,7 +150,7 @@ export function TeamEditor({ pid, agents, locked }: { pid: string; agents: Agent
         <ErrorText error={hire.error || remove.error} />
       </Card>
 
-      {!locked && (
+      {!locked && !hideSuggestions && (
         <Card title="Recommended roles" actions={agents.some((a) => a.is_orchestrator) &&
           <Button disabled={askPm.isPending} onClick={() => askPm.mutate()}>{askPm.isPending ? "Asking…" : "Ask the PM to propose a team"}</Button>}>
           <p className="mb-2 text-xs text-muted">Basis: {(aiRec ?? rec.data)?.basis ?? "…"}</p>

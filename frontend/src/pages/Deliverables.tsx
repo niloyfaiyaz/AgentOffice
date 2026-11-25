@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ProjectSwitcher } from "../App";
+import { useSearchParams } from "react-router-dom";
 import { api, type Artifact, type Finding } from "../api";
 import { useProjectState } from "../hooks";
 import { Badge, Button, Card, Empty, ErrorText, StatusBadge, fmtTime, inputCls } from "../ui";
@@ -14,7 +14,8 @@ export function DeliverablesPage({ pid }: { pid: string }) {
   const st = useProjectState(pid);
   const arts = useQuery({ queryKey: ["artifacts", pid], queryFn: () => api.get<Artifact[]>(`/projects/${pid}/artifacts`) });
   const findings = useQuery({ queryKey: ["findings", pid], queryFn: () => api.get<Finding[]>(`/projects/${pid}/findings`) });
-  const [sel, setSel] = useState<string | null>(null);
+  const [params] = useSearchParams();
+  const [sel, setSel] = useState<string | null>(params.get("artifact"));
   const [version, setVersion] = useState<number | null>(null);
   const [comment, setComment] = useState("");
   const detail = useQuery({ queryKey: ["artifacts", "detail", sel, version], enabled: !!sel,
@@ -27,12 +28,12 @@ export function DeliverablesPage({ pid }: { pid: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-semibold">Deliverables</h1><ProjectSwitcher pid={pid} base="/deliverables" /></div>
+        <div className="flex flex-wrap items-center gap-3"><h2 className="text-lg font-semibold">Deliverables</h2></div>
         <a href={`/api/projects/${pid}/export`} className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-accentInk" download>Export all (.zip)</a>
       </div>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
         <Card title="Files">
-          {!arts.data?.length ? <Empty>No deliverables yet.</Empty> : groups.map((g) => {
+          {!arts.data?.length ? <Empty>No deliverables yet. They appear here as soon as an agent writes one; nothing is shown until real work exists.</Empty> : groups.map((g) => {
             const xs = arts.data!.filter((x) => x.category === g);
             if (!xs.length) return null;
             return (

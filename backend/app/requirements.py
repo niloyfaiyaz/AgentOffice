@@ -20,10 +20,10 @@ from .models import Project, ProjectRequirement, utcnow
 KIND_LABEL = {
     "objective": "Context", "requirement": "Requirement", "deliverable": "Deliverable", "constraint": "Constraint",
     "success_criterion": "Success criterion", "clarification": "Client clarification", "change": "Requirement change",
-    "feedback": "Client feedback",
+    "feedback": "Client feedback", "assumption": "Assumption (accepted by the client)",
 }
 # Items a change request may supersede (deliverable lists and background context are not rules).
-SUPERSEDABLE = {"requirement", "constraint", "success_criterion", "clarification", "change", "feedback"}
+SUPERSEDABLE = {"requirement", "constraint", "success_criterion", "clarification", "change", "feedback", "assumption"}
 
 _LIST_ITEM = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+(.*\S)\s*$")
 _RULE = re.compile(r"\b(must|shall|should|required|requires|needs? to|has to|have to|reject(?:ed)?|may not|"
@@ -107,15 +107,21 @@ def to_dict(db: Session, r: ProjectRequirement) -> dict[str, Any]:
 def sync_core(db: Session, project: Project) -> None:
     """Mirror the brief into requirement items. Items the client retired through a change
     request are never resurrected, even though the original brief text still contains them."""
-    wanted: list[tuple[str, str]] = list(split_brief(project.objective))
-    for d in project.deliverables or []:
-        if str(d).strip():
-            wanted.append(("deliverable", str(d).strip()))
-    if project.constraints.strip():
-        wanted.append(("constraint", project.constraints.strip()))
-    if project.success_criteria.strip():
-        wanted.append(("success_criterion", project.success_criteria.strip()))
-    kinds = ["objective", "requirement", "deliverable", "constraint", "success_criterion"]
+    if (project.brief or {}).get("status") == "confirmed":
+        # Structured brief confirmed by the client (app.discovery): one item per brief entry.
+        from .discovery import baseline_items
+
+        wanted: list[tuple[str, str]] = list(dict.fromkeys(baseline_items(project)))
+    else:
+        wanted = list(split_brief(project.objective))
+        for d in project.deliverables or []:
+            if str(d).strip():
+                wanted.append(("deliverable", str(d).strip()))
+        if project.constraints.strip():
+            wanted.append(("constraint", project.constraints.strip()))
+        if project.success_criteria.strip():
+            wanted.append(("success_criterion", project.success_criteria.strip()))
+    kinds = ["objective", "requirement", "deliverable", "constraint", "success_criterion", "assumption"]
     rows = list(db.scalars(select(ProjectRequirement).where(
         ProjectRequirement.project_id == project.id, ProjectRequirement.source == "user",
         ProjectRequirement.kind.in_(kinds))))
