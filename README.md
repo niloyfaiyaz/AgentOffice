@@ -19,7 +19,7 @@ plays out live in a pixel-art office.
 ![Phaser](https://img.shields.io/badge/Phaser-3-8A2BE2)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![BYOK](https://img.shields.io/badge/BYOK-Anthropic%20%7C%20OpenAI-black)
-![Tests](https://img.shields.io/badge/tests-78%20backend%20·%2016%20UI%20·%203%20e2e-brightgreen)
+![Tests](https://img.shields.io/badge/tests-89%20backend%20·%2022%20UI%20·%204%20e2e-brightgreen)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <img src="docs/images/office-working.png" width="860" alt="The pixel-art office: Bea is working, Archie has just been assigned a task, and the status board shows the run state and spend" />
@@ -153,16 +153,23 @@ The first start installs everything, starts PostgreSQL in Docker, builds the cod
 then opens **http://127.0.0.1:8765** with a one-time sign-in link. Then:
 
 1. **Settings:** paste your API key. It's stored in your OS keychain, never in the database or the browser.
-2. **Start new project:** pick a template and describe the outcome you want.
-3. **Hire the recommended team** and pick a model for each agent.
-4. **Ask the PM for a plan**, review it, and approve.
-5. **Open the Virtual Office** and watch, answering questions as they come.
+2. **New project:** describe what you want in your own words, optionally with files or a template.
+3. **Clarify:** your Project Manager asks only the questions that matter and drafts an editable brief.
+   Every item is labelled *from you* or *AI proposal*.
+4. **Team:** accept the recommended team, which is the smallest that covers the brief, or customize
+   models, instructions, tools and limits.
+5. **Review & approve:** requirements, team, plan, permissions and budget on one screen, then
+   **Approve & Start Project**.
+6. **Work in the project's office:** see what each agent is doing and who is waiting on whom,
+   message the team or one agent, and answer questions. Your Inbox collects every decision across
+   projects.
 
 ```bash
 ./agentoffice open        # sign this browser in again (e.g. after clearing cookies)
 ./agentoffice stop --all   # stop everything
 ./agentoffice logs         # server and worker logs
 ./agentoffice test         # backend and UI test suites
+./agentoffice cleanup-test-data   # dry run: find synthetic test projects (--mark hides, --delete --yes removes)
 ```
 
 ## Privacy and security
@@ -205,7 +212,7 @@ flowchart LR
   and each artifact version records its requirements and exact inputs, which powers change impact
   and the stale-delivery gate.
 
-More detail: [Product strategy](docs/PRODUCT_STRATEGY.md) · [Architecture](docs/ARCHITECTURE.md) ·
+More detail: [Product strategy](docs/PRODUCT_STRATEGY.md) · [UX journey](docs/UX_JOURNEY_REDESIGN.md) · [Architecture](docs/ARCHITECTURE.md) ·
 [Engineering report](docs/ENGINEERING_REPORT.md) ·
 [Open-source assessment](docs/OPEN_SOURCE_FOUNDATION_ASSESSMENT.md).
 
@@ -223,6 +230,9 @@ implemented, partial and planned for each audience, is in the
 **[product strategy](docs/PRODUCT_STRATEGY.md)**.
 
 **Implemented:**
+- a conversational project start: clarify, prefilled editable brief, recommended team, one
+  integrated approval ([UX redesign](docs/UX_JOURNEY_REDESIGN.md));
+- a project-centred workspace with a project switcher, team and agent messaging, and a global inbox;
 - the visual office and task board;
 - configurable teams with per-agent models and permissions;
 - change-aware rework with a stale-delivery gate;
@@ -234,8 +244,6 @@ implemented, partial and planned for each audience, is in the
 - [ ] An estimated plan cost before approval
 - [ ] Academic assistance levels (brainstorm, critique, guided learning, permitted implementation)
       with an exportable AI-use record
-- [ ] A one-click "Autopilot" path: hire the recommended team with default models and go straight
-      to the plan (Manager-style controls already exist)
 - [ ] More starting points: validate a startup idea, MVP specification, capstone plan, rubric review
 - [ ] Live verification with Anthropic models (the adapter is contract-tested only)
 - [ ] Tighter requirement linking by the PM (broad links limit how much work a change can preserve)

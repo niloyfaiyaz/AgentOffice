@@ -40,6 +40,9 @@ plus the task table) and **one event system** (`agent_events`, streamed over SSE
 | `orchestration/context.py` | task-scoped context: requirements, decisions, dependency outputs, agent memory |
 | `requirements.py` | requirement items: brief splitting, stable refs (R-001…), supersession, impact proposal |
 | `traceability.py` | task↔requirement links, artifact-version lineage, deterministic freshness, impact analysis, delivery gate |
+| `discovery.py` | conversational discovery: PM turns (real model, budget-checked), brief with per-item provenance, confirmation into requirement items |
+| `api/workspace.py` | discovery and brief endpoints, recommended team, plan estimate, cross-project inbox |
+| `naming.py`, `cleanup.py` | normalized unique project names; evidence-based synthetic-data cleanup |
 | `tools/` | permission-checked tools, Docker sandbox, file ingestion |
 | `worker.py` | durable worker: leases, heartbeats, restart recovery |
 | `api/routes.py` | HTTP API |
@@ -150,6 +153,16 @@ actually sent to the provider.
 - An agent cannot overwrite a teammate's deliverable unless its task targets that deliverable.
 
 ## Frontend (`frontend/src`)
+
+- **Routes:**
+  - `/` My projects; `/new` and `/new/:id` for setup (clarify, brief, team, review and approve);
+  - `/p/:id/*` the project workspace (office and overview, messages, work plan, deliverables, team
+    and costs);
+  - `/inbox`, `/settings`.
+
+  Workspace views are keyed by the project id. See [UX_JOURNEY_REDESIGN.md](UX_JOURNEY_REDESIGN.md).
+- `office/situation.ts`: each agent's plain-language situation, including "waiting for a teammate",
+  derived only from recorded status and the task table.
 
 - `office/model.ts`: pure `reduce(state, snapshot|event)` and `step(state, dt)`. A character's zone and
   animation come only from recorded agent status (`visualFor`). Walking interpolates between recorded

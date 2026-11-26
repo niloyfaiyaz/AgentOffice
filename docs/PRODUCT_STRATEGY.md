@@ -207,7 +207,7 @@ These are recommendations, not commitments. None of them is implemented in this 
 | G1 | ~~Rework cost estimate on the change-impact card~~ **Done 2026-11-21:** recorded usage re-priced at the current model, totalled against the remaining budget | All | Small | Done |
 | G2 | **Plan cost estimate before approval.** Base it on task count, assigned models and historical usage, with a clear "estimate" label | All, especially founders and students | Medium | **High** |
 | G3 | **Academic assistance levels and an AI-use record.** The levels are brainstorming, critique, guided learning and permitted implementation. They would be a project-level setting that restricts tools and instructions server-side, plus an exportable log of what the AI did | Students | Medium | **High** for the student segment |
-| G4 | **Autopilot path.** Hire the recommended team with default models in one click, then go straight to the plan. Same engine | Founders, students | Small to medium | Medium |
+| G4 | ~~Autopilot path~~ **Done 2026-11-25** in the UX redesign: describe → clarify → accept the recommended team in one click → integrated approval | Founders, students | Small to medium | Done |
 | G5 | **Significant-change threshold.** Auto-approve trivial changes and require approval above an impact or cost threshold. Depends on G1 | PM/BA | Small | Low |
 | G6 | **More templates:** Validate a startup idea, MVP specification, Capstone plan, Rubric review. Catalog entries only | Founders, students | Small | Medium |
 | G7 | **Research beyond Anthropic's built-in search,** for OpenAI-only users | Founders, students | Medium | Under evaluation |

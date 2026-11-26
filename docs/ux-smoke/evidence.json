@@ -1,0 +1,884 @@
+{
+  "cap_usd": 0.4,
+  "steps": [
+    {
+      "t": 0.1,
+      "step": "project created (synthetic, budget set before any call)",
+      "ok": true,
+      "pm": "openai/gpt-5.4",
+      "budget": 0.4
+    },
+    {
+      "t": 12.6,
+      "step": "discovery turn 1 (real PM)",
+      "ok": true,
+      "questions": [
+        "Who should be allowed to access and edit a trip: anyone with a shared link, invited users with accounts, or both?",
+        "How should the itinerary be generated in the first release?",
+        "Do activity suggestions need date/time and location fields in the first release, or is a simple title/description enough?"
+      ],
+      "assumptions": [
+        "Assuming this is a browser-based web app rather than a native mobile app.",
+        "Assuming the first release should prioritize a minimal viable product for a single group per trip.",
+        "Assuming itinerary generation can be basic unless more advanced rules are requested."
+      ],
+      "requirements": 5,
+      "bases": [
+        "ai_proposed",
+        "client_stated"
+      ],
+      "team": [
+        "business_analyst",
+        "developer",
+        "qa_reviewer"
+      ],
+      "spend": 0.016425
+    },
+    {
+      "t": 23.7,
+      "step": "discovery turn 2 (answers + 'I don't know')",
+      "ok": true,
+      "status": "discovering",
+      "questions": 2,
+      "assumptions": [
+        "Assuming this is a browser-based web app rather than a native mobile app.",
+        "Assuming the first release is an MVP focused on one shared planning space per trip.",
+        "Assuming no payment, booking, budgeting, or chat features are required.",
+        "Assuming basic visual styling is acceptable for the prototype unless branding is later provided.",
+        "Assuming hosting can be chosen by the implementation team if the client has no preference.",
+        "Assuming itinerary generation can be basic unless the client wants rules-based automatic scheduling."
+      ],
+      "spend": 0.03556
+    },
+    {
+      "t": 23.8,
+      "step": "brief confirmed into versioned requirements",
+      "ok": true,
+      "refs": [
+        "R-001",
+        "R-002",
+        "R-003",
+        "R-004",
+        "R-005",
+        "R-006",
+        "R-007",
+        "R-008",
+        "R-009",
+        "R-010",
+        "R-011",
+        "R-012",
+        "R-013",
+        "R-014",
+        "R-015",
+        "R-016",
+        "R-017",
+        "R-018",
+        "R-019",
+        "R-020"
+      ]
+    },
+    {
+      "t": 23.8,
+      "step": "recommended team (no model call)",
+      "ok": true,
+      "basis": "your project manager's recommendation from the brief",
+      "roles": [
+        [
+          "project_manager",
+          "gpt-5.4",
+          "$$$"
+        ],
+        [
+          "business_analyst",
+          "gpt-5.4-mini",
+          "$$"
+        ],
+        [
+          "developer",
+          "gpt-5.4-mini",
+          "$$"
+        ],
+        [
+          "qa_reviewer",
+          "gpt-5.4-mini",
+          "$$"
+        ]
+      ]
+    },
+    {
+      "t": 27.1,
+      "step": "chat: change-like message is only suggested",
+      "ok": true,
+      "intent": "requirement_change",
+      "classified_by": "model",
+      "reply": "Thanks \u2014 noted as a requirement/context change. The current brief targets small groups of friends, so changing the audience to families planning holidays would update the project context and may affec",
+      "spend": 0.039582
+    },
+    {
+      "t": 28.9,
+      "step": "chat: ordinary question answered",
+      "ok": true,
+      "reply": "First, we\u2019ll deliver the editable project brief covering scope, requirements, assumptions, and success criteria. After that, the next main deliverable is the responsive web prototype for collaborative",
+      "spend": 0.043427
+    },
+    {
+      "t": 41.3,
+      "step": "PM drafted the work plan (stopped at approval)",
+      "ok": true,
+      "run": "awaiting_approval",
+      "tasks": [
+        [
+          "Produce editable project brief for the MVP prototype",
+          "Bea",
+          [
+            "R-001",
+            "R-007",
+            "R-008",
+            "R-009",
+            "R-010",
+            "R-011",
+            "R-012",
+            "R-013",
+            "R-014",
+            "R-015",
+            "R-016",
+            "R-017",
+            "R-019",
+            "R-020",
+            "R-021",
+            "R-022",
+            "R-024",
+            "R-025",
+            "R-026",
+            "R-027",
+            "R-028",
+            "R-029"
+          ]
+        ],
+        [
+          "Build responsive web prototype for collaborative trip planning",
+          "Dev",
+          [
+            "R-001",
+            "R-002",
+            "R-003",
+            "R-004",
+            "R-005",
+            "R-006",
+            "R-007",
+            "R-008",
+            "R-009",
+            "R-010",
+            "R-011",
+            "R-012",
+            "R-013",
+            "R-018",
+            "R-020",
+            "R-021",
+            "R-022",
+            "R-023",
+            "R-024",
+            "R-025",
+            "R-026",
+            "R-027",
+            "R-028",
+            "R-029"
+          ]
+        ]
+      ],
+      "estimate": {
+        "available": true,
+        "partial": false,
+        "total_usd": 0.0857,
+        "missing_models": [],
+        "lines": [
+          {
+            "title": "Produce editable project brief for the MVP prototype",
+            "agent": "Bea",
+            "model": "gpt-5.4-mini",
+            "usd": 0.0109,
+            "samples": 18
+          },
+          {
+            "title": "Build responsive web prototype for collaborative trip planning",
+            "agent": "Dev",
+            "model": "gpt-5.4-mini",
+            "usd": 0.0109,
+            "samples": 18
+          },
+          {
+            "title": "QA review",
+            "agent": "Quinn",
+            "model": "gpt-5.4-mini",
+            "usd": 0.0109,
+            "samples": 18
+          },
+          {
+            "title": "Consolidate final delivery",
+            "agent": "Pat",
+            "model": "gpt-5.4",
+            "usd": 0.053,
+            "samples": 16
+          }
+        ],
+        "basis": "median recorded cost of a completed task on each model in this installation (estimate)"
+      },
+      "spend": 0.062517
+    }
+  ],
+  "project_id": "428ec792-6b32-46ae-b407-1eaf962c1bc8",
+  "turn1": {
+    "message": "Thanks \u2014 I\u2019ve captured a lean first draft for the travel planning web app. A few decisions still materially affect scope, especially who can access trips and whether itinerary generation is automatic or manual.",
+    "brief": {
+      "status": "discovering",
+      "project_type": "software",
+      "rounds": 1,
+      "questions": [
+        {
+          "id": "3161baef",
+          "question": "Who should be allowed to access and edit a trip: anyone with a shared link, invited users with accounts, or both?",
+          "why": "This determines authentication, permissions, and implementation complexity.",
+          "options": [
+            "Shared link only",
+            "Invited accounts only",
+            "Both"
+          ]
+        },
+        {
+          "id": "a35805c7",
+          "question": "How should the itinerary be generated in the first release?",
+          "why": "This changes scope and acceptance criteria for the core planning workflow.",
+          "options": [
+            "Manual ordering of chosen activities",
+            "Auto-generate from top-voted activities",
+            "Both manual and auto-generate"
+          ]
+        },
+        {
+          "id": "2f4c3ca6",
+          "question": "Do activity suggestions need date/time and location fields in the first release, or is a simple title/description enough?",
+          "why": "This determines the data model and whether the itinerary can be scheduled meaningfully.",
+          "options": [
+            "Title/description only",
+            "Include date/time",
+            "Include date/time and location"
+          ]
+        }
+      ],
+      "recommended_team": [
+        {
+          "role_key": "business_analyst",
+          "responsibility": "Finalize requirements, user flows, and acceptance criteria for trip creation, collaboration, voting, and itinerary generation.",
+          "reason": "The project needs concise, testable scope definition before build."
+        },
+        {
+          "role_key": "developer",
+          "responsibility": "Implement the web app, core data model, UI, and tests.",
+          "reason": "A single developer can likely cover a simple MVP end to end."
+        },
+        {
+          "role_key": "qa_reviewer",
+          "responsibility": "Verify the app against acceptance criteria across core browsers and planning workflows.",
+          "reason": "Independent QA is the smallest way to validate that the MVP actually works as intended."
+        }
+      ],
+      "removed": [],
+      "history": [
+        {
+          "at": "2026-11-25T23:57:29.255289+00:00",
+          "by": "pm",
+          "summary": "Pat updated the brief (23 item(s) proposed, 3 question(s))"
+        }
+      ],
+      "method": "ai",
+      "name": {
+        "id": "9c5a0fa2e0",
+        "text": "Travel Planner",
+        "basis": "ai_proposed"
+      },
+      "objective": {
+        "id": "80ab16556a",
+        "text": "Create a simple web app where friends can suggest activities, vote on options, and generate a shared trip itinerary.",
+        "basis": "client_stated"
+      },
+      "audience": {
+        "id": "11736a0845",
+        "text": "Groups of friends planning a trip together.",
+        "basis": "client_stated"
+      },
+      "scope_in": [
+        {
+          "id": "1cba6d315e",
+          "text": "Create trips that a group can use for collaborative planning.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "05978a300d",
+          "text": "Allow trip participants to suggest activities for the trip.",
+          "basis": "client_stated"
+        },
+        {
+          "id": "af113c2014",
+          "text": "Allow trip participants to vote on proposed activities.",
+          "basis": "client_stated"
+        },
+        {
+          "id": "e788253563",
+          "text": "Generate a shared itinerary from selected activities.",
+          "basis": "client_stated"
+        },
+        {
+          "id": "01cd2e991b",
+          "text": "Provide a web-based interface for trip collaboration.",
+          "basis": "client_stated"
+        }
+      ],
+      "scope_out": [
+        {
+          "id": "eacd9275a1",
+          "text": "Booking flights, hotels, or tickets.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "cf5e768f1e",
+          "text": "Processing payments or trip budgeting.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "0d52ea417b",
+          "text": "Real-time chat or messaging beyond planning interactions.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "0e5b14cf14",
+          "text": "Native mobile apps.",
+          "basis": "ai_proposed"
+        }
+      ],
+      "deliverables": [
+        {
+          "id": "54f4afd19e",
+          "text": "Responsive web app for collaborative trip planning.",
+          "basis": "client_stated"
+        },
+        {
+          "id": "007c26793d",
+          "text": "Editable project brief with scope, requirements, assumptions, and success criteria.",
+          "basis": "ai_proposed"
+        }
+      ],
+      "requirements": [
+        {
+          "id": "519f8ed052",
+          "text": "Users must be able to create a trip and share access with friends.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "b2d5f61a0b",
+          "text": "Trip participants must be able to add activity suggestions with at least a title and description.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "bc90f90fd5",
+          "text": "Trip participants must be able to vote on suggested activities.",
+          "basis": "client_stated"
+        },
+        {
+          "id": "15f386bad5",
+          "text": "The app must present a shared itinerary view for the trip.",
+          "basis": "client_stated"
+        },
+        {
+          "id": "2cde2543d3",
+          "text": "The app must be usable in a web browser on desktop and mobile screen sizes.",
+          "basis": "ai_proposed"
+        }
+      ],
+      "constraints": [
+        {
+          "id": "9d1925d15e",
+          "text": "Initial scope should remain simple and focused on core planning workflows.",
+          "basis": "client_stated"
+        }
+      ],
+      "assumptions": [
+        {
+          "id": "2dc4a31516",
+          "text": "Assuming this is a browser-based web app rather than a native mobile app.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "85ab8682d5",
+          "text": "Assuming the first release should prioritize a minimal viable product for a single group per trip.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "7e7b48ade6",
+          "text": "Assuming itinerary generation can be basic unless more advanced rules are requested.",
+          "basis": "ai_proposed"
+        }
+      ],
+      "open_questions": [
+        {
+          "id": "a22fb6971e",
+          "text": "Authentication method, hosting preferences, and visual branding can be decided later unless the client has strict requirements.",
+          "basis": "ai_proposed"
+        }
+      ],
+      "success_criteria": [
+        {
+          "id": "4c2b4fc1a1",
+          "text": "A user can create a trip, invite or share access with friends, collect activity suggestions, record votes, and view a shared itinerary without admin assistance.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "73b2699b4f",
+          "text": "Core trip-planning tasks work in current major desktop and mobile browsers.",
+          "basis": "ai_proposed"
+        }
+      ]
+    }
+  },
+  "turn2": {
+    "message": "Thanks \u2014 I\u2019ve updated the brief around a lean web prototype for small friend groups. Two decisions still materially affect scope and implementation, so I\u2019ve kept the brief otherwise tight and added only those questions.",
+    "brief": {
+      "status": "discovering",
+      "project_type": "software",
+      "rounds": 2,
+      "questions": [
+        {
+          "id": "860142d7",
+          "question": "How should friends access a trip in the prototype?",
+          "why": "This decides whether we need user accounts/email login or can keep scope smaller with a simple share link or trip code.",
+          "options": [
+            "No sign-in; access via share link or trip code",
+            "Light sign-in (for example email or social login)",
+            "I don't know \u2014 choose the simplest workable option"
+          ]
+        },
+        {
+          "id": "83722c28",
+          "question": "When you say 'generate a shared itinerary,' what level of automation do you want in the prototype?",
+          "why": "This materially changes complexity, UI, and acceptance criteria.",
+          "options": [
+            "Manual itinerary builder: users choose/order selected activities themselves",
+            "Basic auto-fill: app turns selected activities into a simple schedule/order",
+            "I don't know \u2014 use the simplest option"
+          ]
+        }
+      ],
+      "recommended_team": [
+        {
+          "role_key": "business_analyst",
+          "responsibility": "Finalize requirements, user flows, and acceptance criteria for the MVP prototype.",
+          "reason": "Keeps scope tight and turns the idea into testable delivery requirements."
+        },
+        {
+          "role_key": "developer",
+          "responsibility": "Build the web prototype, including trip creation, suggestions, voting, and itinerary views.",
+          "reason": "One developer can cover implementation for a lean prototype."
+        },
+        {
+          "role_key": "qa_reviewer",
+          "responsibility": "Test the prototype against agreed acceptance criteria on desktop and mobile browsers.",
+          "reason": "Provides independent validation without adding overlapping delivery roles."
+        }
+      ],
+      "removed": [],
+      "history": [
+        {
+          "at": "2026-11-25T23:57:29.255289+00:00",
+          "by": "pm",
+          "summary": "Pat updated the brief (23 item(s) proposed, 3 question(s))"
+        },
+        {
+          "at": "2026-11-25T23:57:40.353316+00:00",
+          "by": "pm",
+          "summary": "Pat updated the brief (29 item(s) proposed, 2 question(s))"
+        }
+      ],
+      "method": "ai",
+      "name": {
+        "id": "9496fa6b64",
+        "text": "Travel Planner",
+        "basis": "ai_proposed"
+      },
+      "objective": {
+        "id": "29bc3db443",
+        "text": "Create a simple web app where friends can suggest activities, vote on options, and generate a shared trip itinerary.",
+        "basis": "client_stated"
+      },
+      "audience": {
+        "id": "6150256406",
+        "text": "Small groups of friends (roughly 3\u201310 people) planning a single trip together.",
+        "basis": "client_stated"
+      },
+      "scope_in": [
+        {
+          "id": "2bec7db04b",
+          "text": "Create trips that a group can use for collaborative planning.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "18d329c47f",
+          "text": "Allow trip participants to suggest activities for the trip.",
+          "basis": "client_stated"
+        },
+        {
+          "id": "43a0a73c65",
+          "text": "Allow trip participants to vote on proposed activities.",
+          "basis": "client_stated"
+        },
+        {
+          "id": "30848dbdbb",
+          "text": "Generate a shared itinerary from selected activities.",
+          "basis": "client_stated"
+        },
+        {
+          "id": "05de86ba15",
+          "text": "Provide a web-based interface for trip collaboration.",
+          "basis": "client_stated"
+        },
+        {
+          "id": "9f81068843",
+          "text": "Deliver a working web prototype rather than a production-hardened release.",
+          "basis": "client_stated"
+        }
+      ],
+      "scope_out": [
+        {
+          "id": "c3fe70d08e",
+          "text": "Booking flights, hotels, or tickets.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "10499c51d5",
+          "text": "Processing payments or trip budgeting.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "b34faa49cb",
+          "text": "Real-time chat or messaging beyond planning interactions.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "8d391e9ded",
+          "text": "Native mobile apps.",
+          "basis": "ai_proposed"
+        }
+      ],
+      "deliverables": [
+        {
+          "id": "5e7afcdf87",
+          "text": "Responsive web prototype for collaborative trip planning.",
+          "basis": "client_stated"
+        },
+        {
+          "id": "7e708e2862",
+          "text": "Editable project brief with scope, requirements, assumptions, and success criteria.",
+          "basis": "ai_proposed"
+        }
+      ],
+      "requirements": [
+        {
+          "id": "fd3c571026",
+          "text": "Users must be able to create a trip and share access with friends.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "f6b6462c47",
+          "text": "Trip participants must be able to add activity suggestions with at least a title and description.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "40f5c294da",
+          "text": "Trip participants must be able to vote on suggested activities.",
+          "basis": "client_stated"
+        },
+        {
+          "id": "bc949bc5bc",
+          "text": "The app must present a shared itinerary view for the trip.",
+          "basis": "client_stated"
+        },
+        {
+          "id": "728ff84c28",
+          "text": "The app must be usable in a web browser on desktop and mobile screen sizes.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "07d00a202c",
+          "text": "The prototype must support one trip group of approximately 3\u201310 participants per trip without requiring admin setup.",
+          "basis": "ai_proposed"
+        }
+      ],
+      "constraints": [
+        {
+          "id": "fb38ed0973",
+          "text": "Initial scope should remain simple and focused on core planning workflows.",
+          "basis": "client_stated"
+        }
+      ],
+      "assumptions": [
+        {
+          "id": "8d968e22a5",
+          "text": "Assuming this is a browser-based web app rather than a native mobile app.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "c6b3687f9e",
+          "text": "Assuming the first release is an MVP focused on one shared planning space per trip.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "05bfe2b577",
+          "text": "Assuming no payment, booking, budgeting, or chat features are required.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "cf9071283a",
+          "text": "Assuming basic visual styling is acceptable for the prototype unless branding is later provided.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "cfeab94bec",
+          "text": "Assuming hosting can be chosen by the implementation team if the client has no preference.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "5db1984916",
+          "text": "Assuming itinerary generation can be basic unless the client wants rules-based automatic scheduling.",
+          "basis": "ai_proposed"
+        }
+      ],
+      "open_questions": [
+        {
+          "id": "a30d31e8d4",
+          "text": "Authentication method and visual branding can be decided later unless the client has strict requirements.",
+          "basis": "ai_proposed"
+        }
+      ],
+      "success_criteria": [
+        {
+          "id": "2c286350f4",
+          "text": "A user can create a trip, share access with friends, collect activity suggestions, record votes, and view a shared itinerary without admin assistance.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "2b3f440fae",
+          "text": "Core trip-planning tasks work in current major desktop and mobile browsers.",
+          "basis": "ai_proposed"
+        },
+        {
+          "id": "de315f4fd5",
+          "text": "A working prototype is available for client review.",
+          "basis": "client_stated"
+        }
+      ]
+    }
+  },
+  "result": "complete",
+  "estimated_spend_usd": 0.062517,
+  "usage": {
+    "estimated_total_usd": 0.062517,
+    "budget": {
+      "budget_usd": 0.4,
+      "warning_threshold_pct": 80,
+      "approval_threshold_usd": null,
+      "approval_threshold_acknowledged": false,
+      "max_model_calls_per_run": 120,
+      "max_concurrency": 3,
+      "max_delegation_depth": 2,
+      "max_review_iterations": 2,
+      "task_timeout_seconds": 600
+    },
+    "by_agent": [
+      {
+        "key": "Pat",
+        "calls": 5,
+        "input_tokens": 6479,
+        "output_tokens": 3088,
+        "cache_read_tokens": 0,
+        "estimated_cost_usd": 0.06251699999999999,
+        "unpriced_calls": 0,
+        "test_calls": 0
+      }
+    ],
+    "by_task": [
+      {
+        "key": "(discovery)",
+        "calls": 2,
+        "input_tokens": 2836,
+        "output_tokens": 1898,
+        "cache_read_tokens": 0,
+        "estimated_cost_usd": 0.035559999999999994,
+        "unpriced_calls": 0,
+        "test_calls": 0
+      },
+      {
+        "key": "(planning)",
+        "calls": 1,
+        "input_tokens": 1726,
+        "output_tokens": 985,
+        "cache_read_tokens": 0,
+        "estimated_cost_usd": 0.01909,
+        "unpriced_calls": 0,
+        "test_calls": 0
+      },
+      {
+        "key": "(chat)",
+        "calls": 2,
+        "input_tokens": 1917,
+        "output_tokens": 205,
+        "cache_read_tokens": 0,
+        "estimated_cost_usd": 0.007867,
+        "unpriced_calls": 0,
+        "test_calls": 0
+      }
+    ],
+    "by_model": [
+      {
+        "key": "openai/gpt-5.4",
+        "calls": 5,
+        "input_tokens": 6479,
+        "output_tokens": 3088,
+        "cache_read_tokens": 0,
+        "estimated_cost_usd": 0.06251699999999999,
+        "unpriced_calls": 0,
+        "test_calls": 0
+      }
+    ],
+    "records": [
+      {
+        "id": "b0f2fde0-ccc5-45ac-bc1d-e0b3672694fc",
+        "created_at": "2026-11-25T23:57:29.250315+00:00",
+        "provider": "openai",
+        "model_id": "gpt-5.4",
+        "agent": "Pat",
+        "task": null,
+        "purpose": "discovery",
+        "input_tokens": 1152,
+        "output_tokens": 903,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "other_usage": {
+          "served_model": "gpt-5.4-2026-03-05"
+        },
+        "estimated_cost_usd": 0.016425,
+        "is_test_provider": false,
+        "price_snapshot": {
+          "source": "OpenAI published standard price (developers.openai.com/api/docs/pricing, checked 2026-11-19). Verify before relying on it.",
+          "configured": true,
+          "input_per_mtok": "2.5000",
+          "output_per_mtok": "15.0000",
+          "cache_read_per_mtok": "0.2500",
+          "cache_write_per_mtok": null
+        }
+      },
+      {
+        "id": "93348994-a91f-4bd2-8c59-46e46138ea25",
+        "created_at": "2026-11-25T23:57:40.350245+00:00",
+        "provider": "openai",
+        "model_id": "gpt-5.4",
+        "agent": "Pat",
+        "task": null,
+        "purpose": "discovery",
+        "input_tokens": 1684,
+        "output_tokens": 995,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "other_usage": {
+          "served_model": "gpt-5.4-2026-03-05"
+        },
+        "estimated_cost_usd": 0.019135,
+        "is_test_provider": false,
+        "price_snapshot": {
+          "source": "OpenAI published standard price (developers.openai.com/api/docs/pricing, checked 2026-11-19). Verify before relying on it.",
+          "configured": true,
+          "input_per_mtok": "2.5000",
+          "output_per_mtok": "15.0000",
+          "cache_read_per_mtok": "0.2500",
+          "cache_write_per_mtok": null
+        }
+      },
+      {
+        "id": "c19b5d54-967a-4d11-b0b0-78a73ca0f1be",
+        "created_at": "2026-11-25T23:57:43.739806+00:00",
+        "provider": "openai",
+        "model_id": "gpt-5.4",
+        "agent": "Pat",
+        "task": null,
+        "purpose": "chat",
+        "input_tokens": 961,
+        "output_tokens": 108,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "other_usage": {
+          "served_model": "gpt-5.4-2026-03-05"
+        },
+        "estimated_cost_usd": 0.004022,
+        "is_test_provider": false,
+        "price_snapshot": {
+          "source": "OpenAI published standard price (developers.openai.com/api/docs/pricing, checked 2026-11-19). Verify before relying on it.",
+          "configured": true,
+          "input_per_mtok": "2.5000",
+          "output_per_mtok": "15.0000",
+          "cache_read_per_mtok": "0.2500",
+          "cache_write_per_mtok": null
+        }
+      },
+      {
+        "id": "c6ee5705-e8b6-4a90-9326-2377e5961e08",
+        "created_at": "2026-11-25T23:57:45.582181+00:00",
+        "provider": "openai",
+        "model_id": "gpt-5.4",
+        "agent": "Pat",
+        "task": null,
+        "purpose": "chat",
+        "input_tokens": 956,
+        "output_tokens": 97,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "other_usage": {
+          "served_model": "gpt-5.4-2026-03-05"
+        },
+        "estimated_cost_usd": 0.003845,
+        "is_test_provider": false,
+        "price_snapshot": {
+          "source": "OpenAI published standard price (developers.openai.com/api/docs/pricing, checked 2026-11-19). Verify before relying on it.",
+          "configured": true,
+          "input_per_mtok": "2.5000",
+          "output_per_mtok": "15.0000",
+          "cache_read_per_mtok": "0.2500",
+          "cache_write_per_mtok": null
+        }
+      },
+      {
+        "id": "1a1ff5a4-ecad-4656-ae01-19c88ed776a4",
+        "created_at": "2026-11-25T23:57:56.950680+00:00",
+        "provider": "openai",
+        "model_id": "gpt-5.4",
+        "agent": "Pat",
+        "task": null,
+        "purpose": "planning",
+        "input_tokens": 1726,
+        "output_tokens": 985,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "other_usage": {
+          "served_model": "gpt-5.4-2026-03-05"
+        },
+        "estimated_cost_usd": 0.01909,
+        "is_test_provider": false,
+        "price_snapshot": {
+          "source": "OpenAI published standard price (developers.openai.com/api/docs/pricing, checked 2026-11-19). Verify before relying on it.",
+          "configured": true,
+          "input_per_mtok": "2.5000",
+          "output_per_mtok": "15.0000",
+          "cache_read_per_mtok": "0.2500",
+          "cache_write_per_mtok": null
+        }
+      }
+    ],
+    "disclaimer": "Costs are estimates computed from configured per-token prices. Providers bill actual usage, which may differ and may be reported later. Budgets are AgentOffice controls, not provider billing caps."
+  }
+}
