@@ -7,7 +7,7 @@ psycopg[binary]==3.3.9
 psycopg-pool==3.3.3
 langgraph==1.2.22
 langgraph-checkpoint-postgres==3.2.1
-anthropic==2.10.0
+anthropic==2.14.0
 openai==3.55.1
 cryptography==50.0.2
 keyring==25.7.0
